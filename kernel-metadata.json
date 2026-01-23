@@ -1,0 +1,32 @@
+{
+  "id": "aihearticu/nursegemma-ai-companion-for-nurses",
+  "id_no": 106942866,
+  "title": "NurseGemma - AI Companion for Nurses",
+  "code_file": "nursegemma-ai-companion-for-nurses.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": false,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": [
+    "gpu",
+    "medgemma",
+    "nursing",
+    "healthcare",
+    "nlp",
+    "clinical-decision-support",
+    "sbar",
+    "patient-education",
+    "medication-safety",
+    "agentic-ai"
+  ],
+  "dataset_sources": [],
+  "kernel_sources": [],
+  "competition_sources": [
+    "med-gemma-impact-challenge"
+  ],
+  "model_sources": [
+    "google/medgemma"
+  ]
+}
