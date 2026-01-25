@@ -2,7 +2,7 @@
   "id": "aihearticu/nursegemma-ai-companion-for-nurses",
   "id_no": 106942866,
   "title": "NurseGemma - AI Companion for Nurses",
-  "code_file": "nursegemma-ai-companion-for-nurses.ipynb",
+  "code_file": "nursegemma-kaggle-submission.ipynb",
   "language": "python",
   "kernel_type": "notebook",
   "is_private": false,
@@ -19,7 +19,8 @@
     "sbar",
     "patient-education",
     "medication-safety",
-    "agentic-ai"
+    "agentic-ai",
+    "agentic-workflows"
   ],
   "dataset_sources": [],
   "kernel_sources": [],
