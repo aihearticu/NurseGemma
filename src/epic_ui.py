@@ -822,6 +822,151 @@ def build_epic_ui(companion=None, patient=None):
         )
         return cumulative + time_display + response
 
+    def run_progress_course():
+        """Generate patient progress course summary"""
+        start_time = time.time()
+
+        if companion:
+            try:
+                output = companion.patient_progress_course(
+                    patient_data=patient.get_full_context(),
+                    include_trajectory=True
+                )
+            except Exception as e:
+                output = f"Error generating progress course: {str(e)}"
+        else:
+            # Mock response without model
+            output = f"""**Patient Progress Course: {patient.name}**
+
+**HOSPITAL COURSE SUMMARY**
+- **Admission**: {patient.chief_complaint}
+- **Diagnosis**: {patient.diagnosis}
+- **Current Status**: See nursing notes for latest updates
+
+**TREND ANALYSIS**
+- Vitals: {"Trending stable" if patient.vitals else "No vital trend data"}
+- Labs: {len(patient.labs)} lab values recorded
+
+**RESPONSE TO TREATMENT**
+- Current medications: {len(patient.medications)} active medications
+- See MAR for administration times
+
+*Note: Running in demo mode without MedGemma model.*"""
+
+        execution_time = time.time() - start_time
+        manual_time = 600  # 10 minutes to manually review and summarize
+        saved_time = manual_time - execution_time
+
+        session_stats["total_time_saved"] += saved_time
+        session_stats["tasks_completed"] += 1
+
+        response = format_ai_response(output, "normal")
+        time_display = format_time_savings(execution_time, manual_time, saved_time)
+        cumulative = format_cumulative_time_savings(
+            session_stats["total_time_saved"],
+            session_stats["tasks_completed"]
+        )
+        return cumulative + time_display + response
+
+    def run_shift_watch(shift_type):
+        """Generate shift watch checklist"""
+        start_time = time.time()
+
+        if companion:
+            try:
+                output = companion.shift_watch(
+                    patient_data=patient.get_full_context(),
+                    shift_type=shift_type.lower()
+                )
+            except Exception as e:
+                output = f"Error generating shift watch: {str(e)}"
+        else:
+            # Mock response without model
+            output = f"""**What to Watch This Shift: {patient.name}**
+**Shift: {shift_type.upper()}**
+
+**RED FLAGS - Call MD Immediately If:**
+- Significant vital sign changes
+- New symptoms or deterioration
+- Medication adverse reactions
+
+**WATCH CLOSELY:**
+- Current diagnosis: {patient.diagnosis}
+- Pending orders: {', '.join(patient.pending_orders) if patient.pending_orders else 'None'}
+
+**SHIFT PRIORITIES:**
+1. Complete scheduled assessments
+2. Administer medications on time
+3. Monitor for changes in condition
+
+**MEDICATION ALERTS:**
+- High-alert meds: {', '.join([m.name for m in patient.medications if m.high_alert]) or 'None'}
+
+*Note: Running in demo mode without MedGemma model.*"""
+
+        execution_time = time.time() - start_time
+        manual_time = 300  # 5 minutes to manually create shift priorities
+        saved_time = manual_time - execution_time
+
+        session_stats["total_time_saved"] += saved_time
+        session_stats["tasks_completed"] += 1
+
+        response = format_ai_response(output, "normal")
+        time_display = format_time_savings(execution_time, manual_time, saved_time)
+        cumulative = format_cumulative_time_savings(
+            session_stats["total_time_saved"],
+            session_stats["tasks_completed"]
+        )
+        return cumulative + time_display + response
+
+    def run_family_med_teach():
+        """Generate family-friendly medication explanations"""
+        start_time = time.time()
+
+        med_names = [med.name for med in patient.medications]
+
+        if companion:
+            try:
+                output = companion.explain_meds_to_family(
+                    medications=med_names,
+                    patient_context=f"{patient.name}, {patient.age}yo with {patient.diagnosis}"
+                )
+            except Exception as e:
+                output = f"Error generating medication explanations: {str(e)}"
+        else:
+            # Mock response without model
+            med_list = "\n".join([f"- **{m.name}** ({m.dose} {m.route}): {m.notes or 'For treatment'}"
+                                   for m in patient.medications[:5]])
+            output = f"""**Medication Explanation for Family: {patient.name}**
+
+Here are {patient.name}'s current medications explained in simple terms:
+
+{med_list}
+
+**Questions to Ask the Nurse or Doctor:**
+- Are there any side effects we should watch for?
+- What should we do if a dose is missed?
+- Can these medications be taken with food?
+
+**DISCLAIMER:** This information is for educational purposes. Always ask your healthcare team if you have concerns about medications.
+
+*Note: Running in demo mode without MedGemma model.*"""
+
+        execution_time = time.time() - start_time
+        manual_time = 480  # 8 minutes to explain meds to family
+        saved_time = manual_time - execution_time
+
+        session_stats["total_time_saved"] += saved_time
+        session_stats["tasks_completed"] += 1
+
+        response = format_ai_response(output, "normal")
+        time_display = format_time_savings(execution_time, manual_time, saved_time)
+        cumulative = format_cumulative_time_savings(
+            session_stats["total_time_saved"],
+            session_stats["tasks_completed"]
+        )
+        return cumulative + time_display + response
+
     def analyze_input(input_text):
         """Analyze copy/pasted text"""
         if not input_text:
@@ -1002,11 +1147,29 @@ def build_epic_ui(companion=None, patient=None):
             handoff_btn = gr.Button(" Shift Handoff", variant="secondary")
             med_btn = gr.Button(" Med Safety", variant="secondary")
 
+        gr.Markdown("### New Features")
+        with gr.Row():
+            progress_btn = gr.Button(" Progress Course", variant="secondary")
+            family_med_btn = gr.Button(" Explain Meds to Family", variant="secondary")
+
+        with gr.Row():
+            gr.Markdown("**Shift Watch:**")
+            shift_day_btn = gr.Button("Day Shift", variant="secondary", size="sm")
+            shift_eve_btn = gr.Button("Evening Shift", variant="secondary", size="sm")
+            shift_night_btn = gr.Button("Night Shift", variant="secondary", size="sm")
+
         # Connect buttons
         admission_btn.click(run_admission_workflow, outputs=[ai_output])
         lab_btn.click(run_lab_workflow, outputs=[ai_output])
         handoff_btn.click(run_handoff_workflow, outputs=[ai_output])
         med_btn.click(run_med_safety_workflow, outputs=[ai_output])
+
+        # New feature buttons
+        progress_btn.click(run_progress_course, outputs=[ai_output])
+        family_med_btn.click(run_family_med_teach, outputs=[ai_output])
+        shift_day_btn.click(lambda: run_shift_watch("day"), outputs=[ai_output])
+        shift_eve_btn.click(lambda: run_shift_watch("evening"), outputs=[ai_output])
+        shift_night_btn.click(lambda: run_shift_watch("night"), outputs=[ai_output])
 
         # Disclaimer
         gr.HTML(get_disclaimer())

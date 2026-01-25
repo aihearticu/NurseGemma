@@ -9,6 +9,9 @@ Modules:
 4. Clinical Quick Ref - Lab values, procedures, assessments
 5. Assessment Scales - GCS, NIHSS, Braden, NEWS2, Fall Risk, Pain
 6. Nursing Calculations - Drip rates, dose calculations, clinical formulas
+7. Patient Progress Course - Hospital course summary and trajectory
+8. Shift Watch - Shift-specific priorities and red flags
+9. Family Med Teach - Plain language medication explanations for families
 """
 
 from typing import Optional, List, Dict, Any
@@ -686,6 +689,247 @@ Please provide:
             self.system_prompts["quick_explain"],
             user_message,
             max_new_tokens=200
+        )
+
+    # ==================== MODULE 7: PATIENT PROGRESS COURSE ====================
+
+    def patient_progress_course(
+        self,
+        patient_data: str,
+        include_trajectory: bool = True,
+        days_summary: Optional[int] = None,
+    ) -> str:
+        """
+        Generate a comprehensive patient progress course summary.
+        Summarizes the hospital stay trajectory, key events, and clinical progression.
+
+        Args:
+            patient_data: Full patient context including notes, labs, vitals
+            include_trajectory: Include trend analysis and expected trajectory
+            days_summary: Limit to specific number of days (None = all available)
+
+        Returns:
+            Formatted progress course summary
+        """
+        days_instruction = f"Focus on the last {days_summary} days." if days_summary else "Include the full hospital course."
+
+        user_message = f"""Generate a comprehensive Patient Progress Course summary from this data:
+
+{patient_data}
+
+{days_instruction}
+
+Please provide a nursing-focused summary including:
+
+**HOSPITAL COURSE SUMMARY**
+1. **Admission**: Why the patient was admitted and initial presentation
+2. **Key Events**: Major clinical events, procedures, or changes during stay
+3. **Clinical Trajectory**: How the patient has progressed (improving/stable/declining)
+4. **Current Status**: Where the patient stands now
+
+**TREND ANALYSIS** (if data available)
+- Vital sign trends (improving, stable, worsening)
+- Lab value trends with clinical significance
+- Symptom progression
+
+**RESPONSE TO TREATMENT**
+- What interventions have been tried
+- Patient's response to medications/treatments
+- What's working and what isn't
+
+**ANTICIPATED COURSE**
+- Expected trajectory based on current status
+- Anticipated discharge timeframe (if mentioned)
+- Potential complications to monitor
+
+Keep it concise but thorough - this is for nurses to quickly understand "the story" of this patient."""
+
+        return self._generate_response(
+            self.system_prompts["clinical_ref"],
+            user_message,
+            max_new_tokens=800
+        )
+
+    # ==================== MODULE 8: SHIFT WATCH ====================
+
+    def shift_watch(
+        self,
+        patient_data: str,
+        shift_type: str = "day",
+        focus_areas: Optional[List[str]] = None,
+    ) -> str:
+        """
+        Generate shift-specific watch points and priorities.
+        Tells the oncoming nurse exactly what to watch for this shift.
+
+        Args:
+            patient_data: Full patient context
+            shift_type: "day", "evening", or "night"
+            focus_areas: Specific areas to emphasize (e.g., ["respiratory", "cardiac"])
+
+        Returns:
+            Shift-specific watch list with priorities
+        """
+        shift_context = {
+            "day": "Day shift - most tests, procedures, and rounding happen. Family often visits.",
+            "evening": "Evening shift - transition period, fewer resources, watch for changes.",
+            "night": "Night shift - fewer staff, watch for decompensation, sleep-related issues.",
+        }
+
+        focus_instruction = ""
+        if focus_areas:
+            focus_instruction = f"\nPay special attention to: {', '.join(focus_areas)}"
+
+        user_message = f"""Generate a "What to Watch This Shift" checklist for this patient:
+
+{patient_data}
+
+Shift: {shift_type.upper()} SHIFT
+Context: {shift_context.get(shift_type, shift_context['day'])}
+{focus_instruction}
+
+Provide a practical shift checklist including:
+
+**🚨 RED FLAGS - Call MD Immediately If:**
+- List specific warning signs that require immediate notification
+- Include specific parameters (e.g., "HR > 120 or < 50")
+
+**⚠️ WATCH CLOSELY:**
+- Key things to monitor this shift
+- Specific vital sign concerns
+- Lab values to track or recheck
+- Symptoms to assess
+
+**📋 SHIFT PRIORITIES:**
+1. [Most important task/assessment]
+2. [Second priority]
+3. [Third priority]
+(Be specific - not generic nursing tasks)
+
+**💊 MEDICATION ALERTS:**
+- Timing-critical medications
+- Hold parameters to check
+- PRN medications to consider
+- Upcoming scheduled meds
+
+**📝 DOCUMENTATION FOCUS:**
+- What specifically needs to be charted this shift
+- Any assessments due
+
+**👨‍👩‍👧 ANTICIPATED NEEDS:**
+- Expected orders or changes
+- Family questions to anticipate
+- Discharge planning tasks
+
+Keep it actionable and specific to THIS patient, not generic nursing care."""
+
+        return self._generate_response(
+            self.system_prompts["shift_sidekick"],
+            user_message,
+            max_new_tokens=900
+        )
+
+    # ==================== MODULE 9: FAMILY MED TEACH ====================
+
+    def explain_meds_to_family(
+        self,
+        medications: List[str],
+        patient_context: Optional[str] = None,
+        reading_level: ReadingLevel = ReadingLevel.BASIC,
+        include_why: bool = True,
+        include_side_effects: bool = True,
+    ) -> str:
+        """
+        Generate plain-language medication explanations for family teaching.
+        Designed to help nurses explain medications to patients and families.
+
+        Args:
+            medications: List of medication names to explain
+            patient_context: Optional context about why patient is taking these
+            reading_level: Target reading level for explanation
+            include_why: Include why the patient is taking each med
+            include_side_effects: Include common side effects to watch for
+
+        Returns:
+            Family-friendly medication explanations
+        """
+        context_str = f"\nPatient context: {patient_context}" if patient_context else ""
+
+        med_list = "\n".join([f"- {med}" for med in medications])
+
+        user_message = f"""Help me explain these medications to a patient's family member.
+Use a {reading_level.value} reading level - simple, everyday language.
+{context_str}
+
+Medications to explain:
+{med_list}
+
+For EACH medication, provide a family-friendly explanation:
+
+**[MEDICATION NAME]**
+{"**What it's for:** Why the patient takes this medicine (in simple terms)" if include_why else ""}
+**What it does:** How it helps the patient (use everyday comparisons)
+{"**What to watch for:** Common side effects in plain language" if include_side_effects else ""}
+**Important tips:** Key things the family should know
+
+Use language like:
+- "This medicine helps..." instead of "This medication is indicated for..."
+- "It works by..." instead of "The mechanism of action..."
+- "Watch for..." instead of "Adverse effects include..."
+
+Avoid medical jargon. If you must use a medical term, explain it in parentheses.
+
+At the end, include:
+**Questions to Ask the Doctor or Nurse:**
+- 2-3 relevant questions the family might want to ask
+
+**DISCLAIMER:** Always remind them to ask the nurse or doctor if they have concerns."""
+
+        return self._generate_response(
+            self.system_prompts["quick_explain"],
+            user_message,
+            max_new_tokens=800
+        )
+
+    def explain_single_med_to_family(
+        self,
+        medication: str,
+        dose: Optional[str] = None,
+        reason: Optional[str] = None,
+        reading_level: ReadingLevel = ReadingLevel.BASIC,
+    ) -> str:
+        """
+        Quick single medication explanation for family.
+
+        Args:
+            medication: Medication name
+            dose: Current dose (optional)
+            reason: Why patient is taking it (optional)
+            reading_level: Target reading level
+
+        Returns:
+            Simple medication explanation
+        """
+        dose_str = f" ({dose})" if dose else ""
+        reason_str = f"\nPatient is taking this for: {reason}" if reason else ""
+
+        user_message = f"""Explain this medication to a patient's family member in simple terms.
+Use a {reading_level.value} reading level.
+
+Medication: {medication}{dose_str}
+{reason_str}
+
+In 3-4 sentences, explain:
+1. What this medicine is for (in everyday language)
+2. How it helps the patient
+3. One important thing to watch for or know
+
+Keep it conversational and reassuring. Avoid medical jargon."""
+
+        return self._generate_response(
+            self.system_prompts["quick_explain"],
+            user_message,
+            max_new_tokens=250
         )
 
     # ==================== MODULE 5: ASSESSMENT SCALES ====================
