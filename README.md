@@ -11,7 +11,7 @@
 
 ## 🏗️ Architecture
 
-NurseGemma uses a **multi-agent architecture** with:
+NurseGemma uses a **multi-agent architecture** with Gemini as the orchestrator and MedGemma as the medical specialist:
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -58,56 +58,49 @@ NurseGemma bridges this gap with AI that understands nursing workflows.
 ### 1. 🖼️ Medical Image Analysis
 Analyze X-rays, CT scans, MRI, and wounds with nursing-focused interpretations.
 
-```python
-# Example: Analyze chest X-ray
+```
 "Analyze this chest X-ray for my ICU patient. What should I report to the physician?"
 ```
 
 ### 2. 💊 Clinical Q&A
 Get answers about medications, lab values, and procedures.
 
-```python
-# Example: Drug considerations
-"What are the nursing considerations for Lasix?"
+```
+"What are the nursing considerations for Lasix (furosemide)?"
 ```
 
 ### 3. 📚 Evidence-Based Practice
 Search guidelines and literature for best practices.
 
-```python
-# Example: Evidence query
+```
 "What does the evidence say about prone positioning in ARDS?"
 ```
 
 ### 4. 📋 Nurse Summaries
 Generate SBAR-style handoffs and shift reports.
 
-```python
-# Example: Handoff summary
+```
 "Summarize this patient for night shift handoff"
 ```
 
 ---
 
-## 🖼️ Sample Images
+## 🖼️ Sample Images for Testing
 
-The demo includes clickable sample medical images:
+Download from these Kaggle datasets to test image analysis:
 
-| Category | Samples |
-|----------|---------|
-| **X-ray** | Normal chest, Pneumonia, Pleural effusion |
-| **CT** | Normal brain, Ischemic stroke (MCA) |
-| **MRI** | Knee (ACL/meniscus) |
-| **Wound** | Stage IV pressure ulcer |
+| Type | Dataset |
+|------|---------|
+| **Chest X-rays** | [NIH Chest X-ray Dataset](https://www.kaggle.com/datasets/nih-chest-xrays/data) |
+| **CT Scans** | [Chest CT-Scan Images](https://www.kaggle.com/datasets/mohamedhanyyy/chest-ctscan-images) |
+| **Brain MRI** | [Brain MRI Dataset](https://www.kaggle.com/datasets/navoneel/brain-mri-images-for-brain-tumor-detection) |
+| **Skin/Wound** | [Skin Cancer Dataset](https://www.kaggle.com/datasets/fanconic/skin-cancer-malignant-vs-benign) |
 
 ---
 
 ## 🚀 Quick Start
 
-### Option 1: Hugging Face Spaces
-Visit: [NurseGemma on HuggingFace](https://huggingface.co/spaces/AIHeartICU/NurseGemma)
-
-### Option 2: Local/Kaggle
+### Option 1: Gradio Web UI
 
 ```bash
 # Clone the repo
@@ -118,15 +111,19 @@ cd NurseGemma
 pip install -r requirements.txt
 
 # Set environment variables
-export GEMINI_API_KEY="your-gemini-api-key"
+export GEMINI_API_KEY="your-gemini-api-key"  # Free from Google AI Studio
 export HF_TOKEN="your-huggingface-token"
 
 # Run the app
 python app.py
 ```
 
-### Option 3: Kaggle Notebook
-Open `nursegemma.ipynb` on Kaggle with GPU enabled.
+### Option 2: Kaggle Notebook
+
+1. Open `nursegemma.ipynb` on [Kaggle](https://www.kaggle.com/)
+2. Add your HuggingFace token to Kaggle Secrets as `HF_TOKEN`
+3. Enable GPU (Settings → Accelerator → GPU T4 x2)
+4. Run All
 
 ---
 
@@ -139,15 +136,9 @@ Open `nursegemma.ipynb` on Kaggle with GPU enabled.
 
 ---
 
-## 🎬 Demo Video
-
-[Watch the 3-minute demo](link-coming-soon)
-
----
-
 ## 📝 Technical Overview
 
-**Why Agentic?**
+### Why Agentic?
 
 Traditional medical AI is single-model, single-task. NurseGemma is different:
 
@@ -156,12 +147,18 @@ Traditional medical AI is single-model, single-task. NurseGemma is different:
 3. **Multi-Agent Collaboration**: Complex queries use multiple agents
 4. **Synthesis**: Orchestrator combines responses into cohesive answers
 
-**Why Nursing-Focused?**
+### Why Nursing-Focused?
 
-- Nurses are the largest healthcare workforce
-- 40% of nursing time is documentation
+- Nurses are the largest healthcare workforce (4M+ in US alone)
+- 40% of nursing time is spent on documentation
 - Families need information but nurses are stretched thin
 - ICU/critical care has highest information needs
+
+---
+
+## 🎬 Demo Video
+
+*Coming soon for competition submission*
 
 ---
 
@@ -185,4 +182,4 @@ MIT License
 
 ---
 
-*Built with ❤️ by a nurse who codes | MedGemma Impact Challenge 2026*
+*Built with ❤️ by a nurse who codes | MedGemma Impact Challenge 2026 - Agentic Category*
