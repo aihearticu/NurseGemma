@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: white; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .title { text-align: center; color: #1a73e8; font-size: 24px; margin-bottom: 20px; }
+        .box { border: 2px solid #333; border-radius: 8px; padding: 15px; margin: 10px; text-align: center; }
+        .orchestrator { background: #e3f2fd; border-color: #1a73e8; }
+        .agent { background: #e8f5e9; border-color: #4caf50; }
+        .arrow { text-align: center; font-size: 24px; color: #666; }
+        .row { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+        .agent-title { font-weight: bold; color: #2e7d32; }
+        .agent-model { font-size: 12px; color: #666; }
+        .agent-tasks { font-size: 11px; color: #888; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="title">🩺 NurseGemma - Agentic Architecture</div>
+        
+        <div class="box orchestrator">
+            <strong>🧠 GEMINI ORCHESTRATOR</strong><br>
+            <span style="font-size: 12px;">Intent Classification | Query Routing | Response Synthesis</span>
+        </div>
+        
+        <div class="arrow">↓</div>
+        
+        <div class="row">
+            <div class="box agent" style="width: 200px;">
+                <div class="agent-title">🖼️ IMAGE AGENT</div>
+                <div class="agent-model">MedGemma 1.5 / Gemini</div>
+                <div class="agent-tasks">X-rays • CT • MRI • Wounds</div>
+            </div>
+            <div class="box agent" style="width: 200px;">
+                <div class="agent-title">💊 CLINICAL AGENT</div>
+                <div class="agent-model">MedGemma 1.5 / Gemini</div>
+                <div class="agent-tasks">Meds • Labs • Assessments</div>
+            </div>
+            <div class="box agent" style="width: 200px;">
+                <div class="agent-title">📚 EVIDENCE AGENT</div>
+                <div class="agent-model">Gemini + Grounding</div>
+                <div class="agent-tasks">Guidelines • Research • SCCM</div>
+            </div>
+        </div>
+        
+        <div class="arrow">↓</div>
+        
+        <div class="box" style="background: #fff3e0; border-color: #ff9800;">
+            <strong>📋 Nursing-Focused Response</strong><br>
+            <span style="font-size: 12px;">Considerations • Safety Alerts • When to Escalate</span>
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px; color: #666; font-size: 12px;">
+            Built by a nurse, for nurses | MedGemma Impact Challenge 2026
+        </div>
+    </div>
+</body>
+</html>
