@@ -126,7 +126,7 @@ NurseGemma/
 ```bash
 cd ~/NurseGemma
 source .venv/bin/activate
-export GEMINI_API_KEY="YOUR_API_KEY_HERE"
+export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 python app.py
 # Open http://127.0.0.1:7860
 ```
