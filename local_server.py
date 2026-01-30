@@ -25,7 +25,6 @@ def chat(message, history, mode, image):
     system = FAMILY_PROMPT if "Family" in mode else NURSE_PROMPT
     conv = [system + "\n"]
     
-    # Handle history - convert from dict format if needed
     for h in history:
         if isinstance(h, dict):
             role = h.get("role", "")
@@ -34,8 +33,6 @@ def chat(message, history, mode, image):
                 conv.append(f"User: {content}\n")
             elif role == "assistant":
                 conv.append(f"NurseGemma: {content}\n")
-        elif isinstance(h, (list, tuple)) and len(h) >= 2:
-            conv.append(f"User: {h[0]}\nNurseGemma: {h[1]}\n")
     
     conv.append(f"User: {text}\nNurseGemma:")
     
@@ -62,12 +59,13 @@ with gr.Blocks(title="NurseGemma") as demo:
     mode = gr.Radio(["👨‍👩‍👧 Family Mode", "👩‍⚕️ Nurse Mode"], value="👨‍👩‍👧 Family Mode", label="Mode")
     image = gr.Image(type="pil", label="Upload Image (wound, scan, etc.)")
     
-    chatbot = gr.Chatbot(height=400, type="tuples")
+    chatbot = gr.Chatbot(height=400)
     msg = gr.Textbox(placeholder="Ask a question...", label="Message")
     
     def respond(message, chat_history, mode, image):
         response = chat(message, chat_history, mode, image)
-        chat_history.append((message, response))
+        chat_history.append({"role": "user", "content": message})
+        chat_history.append({"role": "assistant", "content": response})
         return "", chat_history
     
     msg.submit(respond, [msg, chatbot, mode, image], [msg, chatbot])
