@@ -2,20 +2,17 @@
 # MedGemma Impact Challenge 2026
 
 # Core
-torch>=2.0.0
-transformers>=4.40.0
-accelerate>=0.27.0
 pillow>=10.0.0
 requests>=2.31.0
 
-# Gemini (Orchestrator)
-google-generativeai>=0.4.0
+# Gemini API (Orchestrator)
+google-generativeai>=0.8.0
 
-# UI
+# Gradio UI
 gradio>=4.15.0
 
-# HuggingFace
+# MedGemma (optional - requires GPU)
+torch>=2.0.0
+transformers>=4.40.0
+accelerate>=0.27.0
 huggingface_hub>=0.20.0
-
-# Optional - for local dev
-python-dotenv>=1.0.0
