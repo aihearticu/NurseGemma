@@ -1,114 +1,188 @@
 # 🩺 NurseGemma
 
-**Your AI Nursing Companion** — Built by a nurse, for nurses and families.
+**Agentic Medical AI for Nursing Practice**
 
-NurseGemma bridges the gap between families and healthcare teams using Google MedGemma.
+*Built by a nurse, for nurses and families.*
 
-🌐 **Live Demo**: [mentius.ai/nursegemma](https://mentius.ai/nursegemma/)
-
-## The Problem
-
-As an ICU nurse, I spend 40% of my shift documenting instead of caring for patients. Meanwhile, families wait anxiously with questions — "What does this mean?" "Why is this beeping?" "Is my dad going to be okay?"
-
-## The Solution
-
-NurseGemma bridges this gap:
-
-1. **Family at bedside** → Asks NurseGemma questions while waiting
-2. **NurseGemma responds** → Provides clear, reassuring explanations  
-3. **Nurse makes rounds** → Reviews the summary of what family asked
-4. **Nurse follows up** → Clarifies, expands, or corrects as needed
-
-*Families get immediate answers. Nurses save time on repetitive education. Everyone stays on the same page.*
-
-## Features
-
-### 👨‍👩‍👧 Family Mode
-Get medical explanations in plain English. No jargon.
-
-```python
-ask_nursegemma("What is CHF? My dad was just diagnosed.")
-```
-
-### 👩‍⚕️ Nurse Mode  
-Get professional clinical assessments with proper terminology.
-
-```python
-ask_nursegemma("68yo M, POD 2 hip replacement, new confusion and fever - assessment?")
-```
-
-### 🖼️ Image Analysis
-Upload wound photos or medical scans for AI-assisted interpretation.
-
-```python
-analyze_wound(image, patient_context="elderly patient, sacral area")
-analyze_scan(image, scan_type="chest X-ray")
-```
-
-### 📋 Nurse Summary
-Generate handoff summaries of all family questions for the healthcare team.
-
-```python
-generate_nurse_summary(patient_name="Room 512 - Mr. Johnson")
-```
-
-## Quick Start
-
-### Option 1: Kaggle (Recommended for Competition)
-
-1. Open `nursegemma.ipynb` on [Kaggle](https://www.kaggle.com/)
-2. Add your HuggingFace token to Kaggle Secrets as `HF_TOKEN`
-3. Enable GPU (Settings → Accelerator → GPU T4 x2)
-4. Run All
-
-### Option 2: Local GPU Server
-
-Requirements: NVIDIA GPU with 16GB+ VRAM (RTX 3090, 4090, A100)
-
-```bash
-# Clone repo
-git clone https://github.com/AIHeartICU/NurseGemma.git
-cd NurseGemma
-
-# Create environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install torch transformers accelerate gradio huggingface_hub
-
-# Login to HuggingFace (need MedGemma access)
-huggingface-cli login
-
-# Run server (creates public link)
-python local_server.py
-```
-
-### Option 3: Web Demo
-
-Try it now at [mentius.ai/nursegemma](https://mentius.ai/nursegemma/)
-
-## Requirements
-
-- **Kaggle/Local**: GPU with 16GB+ VRAM, HuggingFace account with MedGemma access
-- **Web Demo**: Just a browser!
-
-## Tech Stack
-
-- **Model**: Google MedGemma 4B (medical fine-tuned Gemma)
-- **Framework**: Gradio / Streamlit
-- **Inference**: PyTorch + Transformers
-
-## Disclaimer
-
-⚠️ **NurseGemma is an educational tool.** All outputs should be verified by qualified healthcare professionals. Not for diagnostic or treatment decisions.
-
-## Links
-
-- 🌐 [Live Demo](https://mentius.ai/nursegemma/)
-- 🏆 [MedGemma Impact Challenge](https://www.kaggle.com/competitions/med-gemma-impact-challenge)
-- 🐦 [Twitter @AIHeartICU](https://x.com/AIHeartICU)
+[![MedGemma Impact Challenge](https://img.shields.io/badge/MedGemma-Impact%20Challenge%202026-blue)](https://www.kaggle.com/competitions/med-gemma-impact-challenge)
+[![Agentic AI](https://img.shields.io/badge/Category-Agentic%20AI-green)]()
 
 ---
 
-*Built for the MedGemma Impact Challenge 2026*
+## 🏗️ Architecture
+
+NurseGemma uses a **multi-agent architecture** with:
+
+```
+┌─────────────────────────────────────────────────┐
+│           GEMINI ORCHESTRATOR                   │
+│     (Intent classification, routing, synthesis) │
+└──────────────────┬──────────────────────────────┘
+                   │
+    ┌──────────────┼──────────────┬───────────────┐
+    ▼              ▼              ▼               ▼
+┌────────┐  ┌────────────┐  ┌──────────┐  ┌────────────┐
+│ IMAGE  │  │  CLINICAL  │  │ EVIDENCE │  │  SUMMARY   │
+│ AGENT  │  │  QA AGENT  │  │  AGENT   │  │   AGENT    │
+│        │  │            │  │          │  │            │
+│MedGemma│  │ MedGemma   │  │ RAG+Lit  │  │ MedGemma   │
+│ 1.5 4B │  │  1.5 4B    │  │          │  │            │
+└────────┘  └────────────┘  └──────────┘  └────────────┘
+```
+
+### Agent Roles
+
+| Agent | Model | Function |
+|-------|-------|----------|
+| **Orchestrator** | Gemini 1.5 Flash | Routes queries, classifies intent, synthesizes responses |
+| **Image Agent** | MedGemma 1.5 4B | Analyzes X-rays, CT, MRI, wound images |
+| **Clinical QA** | MedGemma 1.5 4B | Medications, lab values, procedures, protocols |
+| **Evidence Agent** | RAG | Guidelines (SCCM, AACN), PubMed literature |
+| **Summary Agent** | MedGemma 1.5 4B | SBAR handoffs, shift reports, documentation |
+
+---
+
+## 🎯 The Problem
+
+As an ICU nurse, I face two challenges daily:
+
+1. **40% of my shift is documentation** instead of patient care
+2. **Families wait anxiously** with questions they're afraid to ask
+
+NurseGemma bridges this gap with AI that understands nursing workflows.
+
+---
+
+## ✨ Features
+
+### 1. 🖼️ Medical Image Analysis
+Analyze X-rays, CT scans, MRI, and wounds with nursing-focused interpretations.
+
+```python
+# Example: Analyze chest X-ray
+"Analyze this chest X-ray for my ICU patient. What should I report to the physician?"
+```
+
+### 2. 💊 Clinical Q&A
+Get answers about medications, lab values, and procedures.
+
+```python
+# Example: Drug considerations
+"What are the nursing considerations for Lasix?"
+```
+
+### 3. 📚 Evidence-Based Practice
+Search guidelines and literature for best practices.
+
+```python
+# Example: Evidence query
+"What does the evidence say about prone positioning in ARDS?"
+```
+
+### 4. 📋 Nurse Summaries
+Generate SBAR-style handoffs and shift reports.
+
+```python
+# Example: Handoff summary
+"Summarize this patient for night shift handoff"
+```
+
+---
+
+## 🖼️ Sample Images
+
+The demo includes clickable sample medical images:
+
+| Category | Samples |
+|----------|---------|
+| **X-ray** | Normal chest, Pneumonia, Pleural effusion |
+| **CT** | Normal brain, Ischemic stroke (MCA) |
+| **MRI** | Knee (ACL/meniscus) |
+| **Wound** | Stage IV pressure ulcer |
+
+---
+
+## 🚀 Quick Start
+
+### Option 1: Hugging Face Spaces
+Visit: [NurseGemma on HuggingFace](https://huggingface.co/spaces/AIHeartICU/NurseGemma)
+
+### Option 2: Local/Kaggle
+
+```bash
+# Clone the repo
+git clone https://github.com/AIHeartICU/NurseGemma.git
+cd NurseGemma
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set environment variables
+export GEMINI_API_KEY="your-gemini-api-key"
+export HF_TOKEN="your-huggingface-token"
+
+# Run the app
+python app.py
+```
+
+### Option 3: Kaggle Notebook
+Open `nursegemma.ipynb` on Kaggle with GPU enabled.
+
+---
+
+## 🔑 API Keys Required
+
+| Service | Purpose | Get Key |
+|---------|---------|---------|
+| **Gemini** | Orchestrator agent | [Google AI Studio](https://makersuite.google.com/app/apikey) (free) |
+| **HuggingFace** | MedGemma access | [HuggingFace](https://huggingface.co/settings/tokens) |
+
+---
+
+## 🎬 Demo Video
+
+[Watch the 3-minute demo](link-coming-soon)
+
+---
+
+## 📝 Technical Overview
+
+**Why Agentic?**
+
+Traditional medical AI is single-model, single-task. NurseGemma is different:
+
+1. **Intent Classification**: Gemini analyzes what you're asking
+2. **Smart Routing**: Queries go to specialized agents
+3. **Multi-Agent Collaboration**: Complex queries use multiple agents
+4. **Synthesis**: Orchestrator combines responses into cohesive answers
+
+**Why Nursing-Focused?**
+
+- Nurses are the largest healthcare workforce
+- 40% of nursing time is documentation
+- Families need information but nurses are stretched thin
+- ICU/critical care has highest information needs
+
+---
+
+## ⚠️ Disclaimer
+
+NurseGemma is an **educational tool**. All outputs should be verified by qualified healthcare professionals. Not intended for diagnostic or treatment decisions.
+
+---
+
+## 📜 License
+
+MIT License
+
+---
+
+## 🙏 Acknowledgments
+
+- Google MedGemma team for the incredible open models
+- The nursing community for inspiring this project
+- MedGemma Impact Challenge organizers
+
+---
+
+*Built with ❤️ by a nurse who codes | MedGemma Impact Challenge 2026*
