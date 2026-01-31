@@ -38,9 +38,105 @@ HF_TOKEN = os.environ.get("HF_TOKEN", "")
 USE_MEDGEMMA = os.environ.get("USE_MEDGEMMA", "false").lower() == "true"
 USE_MEDASR = os.environ.get("USE_MEDASR", "false").lower() == "true"
 
+# GPU Backend URL (for remote 4090 inference)
+# Set this to your gpu_backend.py server URL for real MedGemma power
+GPU_BACKEND_URL = os.environ.get("GPU_BACKEND_URL", "")
+
 # Model IDs - Updated to MedGemma 1.5
 MEDGEMMA_MODEL_ID = "google/medgemma-1.5-4b-it"
 MEDASR_MODEL_ID = "google/medasr"
+
+
+# ============================================================================
+# GPU BACKEND CLIENT (Remote 4090 inference)
+# ============================================================================
+
+import requests
+
+class GPUBackendClient:
+    """Client for calling remote GPU backend (your 4090)."""
+    
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+        self.available = self._check_health()
+    
+    def _check_health(self) -> bool:
+        """Check if backend is available."""
+        if not self.base_url:
+            return False
+        try:
+            resp = requests.get(f"{self.base_url}/health", timeout=5)
+            if resp.ok:
+                data = resp.json()
+                print(f"✅ GPU Backend connected: {data.get('gpu', 'unknown')}")
+                return True
+        except Exception as e:
+            print(f"⚠️ GPU Backend not available: {e}")
+        return False
+    
+    def analyze_images(self, images: List[Image.Image], prompt: str, max_tokens: int = 800) -> str:
+        """Send images to GPU backend for MedGemma analysis."""
+        if not self.available:
+            return None
+        
+        # Convert images to base64
+        images_b64 = []
+        for img in images:
+            buffer = BytesIO()
+            img.save(buffer, format="PNG")
+            b64 = base64.b64encode(buffer.getvalue()).decode()
+            images_b64.append(b64)
+        
+        try:
+            resp = requests.post(
+                f"{self.base_url}/analyze",
+                json={"prompt": prompt, "images_base64": images_b64, "max_tokens": max_tokens},
+                timeout=60
+            )
+            if resp.ok:
+                return resp.json().get("response")
+        except Exception as e:
+            print(f"GPU Backend error: {e}")
+        return None
+    
+    def clinical_qa(self, prompt: str, max_tokens: int = 600) -> str:
+        """Send clinical question to GPU backend."""
+        if not self.available:
+            return None
+        
+        try:
+            resp = requests.post(
+                f"{self.base_url}/clinical",
+                json={"prompt": prompt, "max_tokens": max_tokens},
+                timeout=30
+            )
+            if resp.ok:
+                return resp.json().get("response")
+        except Exception as e:
+            print(f"GPU Backend error: {e}")
+        return None
+    
+    def transcribe(self, audio_path: str) -> str:
+        """Send audio to GPU backend for MedASR transcription."""
+        if not self.available:
+            return None
+        
+        try:
+            with open(audio_path, "rb") as f:
+                resp = requests.post(
+                    f"{self.base_url}/transcribe",
+                    files={"audio": f},
+                    timeout=30
+                )
+            if resp.ok:
+                return resp.json().get("text")
+        except Exception as e:
+            print(f"GPU Backend transcription error: {e}")
+        return None
+
+
+# Initialize GPU backend client
+gpu_backend = GPUBackendClient(GPU_BACKEND_URL) if GPU_BACKEND_URL else None
 
 # Sample images
 SAMPLES_DIR = Path(__file__).parent / "samples"
@@ -157,6 +253,12 @@ def transcribe_medical_audio(audio_path: str) -> str:
     Transcribe medical audio using MedASR.
     82% fewer errors than Whisper on medical dictation!
     """
+    # Try GPU backend first
+    if gpu_backend and gpu_backend.available:
+        result = gpu_backend.transcribe(audio_path)
+        if result:
+            return result
+    
     if not medasr_available:
         # Fallback to Whisper if MedASR not available
         return transcribe_with_whisper(audio_path)
@@ -262,9 +364,29 @@ class ImageAgent:
     
     def analyze(self, image: Image.Image, query: str) -> str:
         """Analyze medical image."""
+        # Try GPU backend first (remote 4090)
+        if gpu_backend and gpu_backend.available:
+            prompt = self._build_analysis_prompt(query)
+            result = gpu_backend.analyze_images([image], prompt)
+            if result:
+                return result
+        
+        # Local MedGemma
         if self.medgemma and self.processor:
             return self._analyze_medgemma(image, query)
         return self._analyze_gemini(image, query)
+    
+    def _build_analysis_prompt(self, query: str) -> str:
+        """Build nursing-focused analysis prompt."""
+        return f"""Analyze this medical image for a nursing assessment.
+
+Query: {query if query else "Describe the findings and nursing implications."}
+
+Provide:
+1. Image modality and type
+2. Key findings (normal/abnormal)
+3. Nursing considerations
+4. Suggested actions"""
     
     def _analyze_gemini(self, image: Image.Image, query: str) -> str:
         """Analyze with Gemini (multimodal)."""
@@ -344,9 +466,30 @@ class LongitudinalAgent:
         if not timestamps:
             timestamps = [f"Image {i+1}" for i in range(len(images))]
         
+        # Try GPU backend first (remote 4090)
+        if gpu_backend and gpu_backend.available:
+            prompt = self._build_comparison_prompt(query, timestamps)
+            result = gpu_backend.analyze_images(images, prompt, max_tokens=800)
+            if result:
+                return result
+        
         if self.medgemma and self.processor:
             return self._compare_medgemma(images, query, timestamps)
         return self._compare_gemini(images, query, timestamps)
+    
+    def _build_comparison_prompt(self, query: str, timestamps: List[str]) -> str:
+        """Build longitudinal comparison prompt."""
+        time_labels = " → ".join(timestamps)
+        return f"""Compare these medical images taken over time ({time_labels}).
+
+Query: {query if query else "Analyze the progression and changes."}
+
+Provide a NURSING-FOCUSED longitudinal assessment:
+1. Baseline findings (first image)
+2. Changes observed over time (improved/worsened/new/resolved)
+3. Trending assessment (improving/stable/worsening)
+4. Nursing implications for handoff
+5. Recommended monitoring"""
     
     def _compare_gemini(self, images: List[Image.Image], query: str, timestamps: List[str]) -> str:
         """Compare with Gemini."""
@@ -959,10 +1102,15 @@ def create_ui():
         
         # Status banner
         statuses = []
+        if gpu_backend and gpu_backend.available:
+            statuses.append("🟢 GPU Backend (4090)")
         statuses.append("🟢 MedGemma 1.5" if mg_available else "🟡 MedGemma (GPU required)")
         statuses.append("🟢 MedASR" if asr_available else "🟡 MedASR (GPU required)")
         statuses.append("🟢 Gemini" if gemini_model else "🔴 Gemini (API key needed)")
         gr.Markdown(f"**Model Status:** {' | '.join(statuses)}")
+        
+        if gpu_backend and gpu_backend.available:
+            gr.Markdown("*🚀 Connected to remote RTX 4090 for real MedGemma 1.5 inference!*")
         
         with gr.Row():
             # Left: Input

@@ -1,0 +1,20 @@
+# NurseGemma GPU Backend Requirements
+# For running gpu_backend.py on your RTX 4090
+
+# Server
+fastapi>=0.100.0
+uvicorn>=0.23.0
+python-multipart>=0.0.6  # For file uploads
+
+# ML/AI
+torch>=2.0.0
+transformers>=4.45.0
+accelerate>=0.27.0
+huggingface_hub>=0.20.0
+
+# Audio (for MedASR)
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# Optional: For public URL
+pyngrok>=7.0.0
