@@ -185,6 +185,10 @@ class CodeBlueAgent:
         "asystole": "rhythm_asystole",
         "flatline": "rhythm_asystole",
         "flat line": "rhythm_asystole",
+        "sinus rhythm": "rhythm_sinus",
+        "sinus": "rhythm_sinus",
+        "nsr": "rhythm_sinus",
+        "normal sinus": "rhythm_sinus",
         
         # Defibrillation
         "shock advised": "shock_advised",
@@ -199,10 +203,15 @@ class CodeBlueAgent:
         "epinephrine given": "epi_given",
         "epi in": "epi_given",
         "1 of epi": "epi_given",
+        "push epi": "epi_given",
         "amiodarone": "amio_given",
         "amio given": "amio_given",
+        "amio 300": "amio_300",
         "300 of amio": "amio_300",
+        "300 amio": "amio_300",
+        "amio 150": "amio_150",
         "150 of amio": "amio_150",
+        "150 amio": "amio_150",
         "lidocaine": "lido_given",
         "lido given": "lido_given",
         "bicarb": "bicarb_given",
@@ -248,9 +257,11 @@ class CodeBlueAgent:
     def __init__(self):
         self.session: Optional[CodeBlueSession] = None
         
-    def start_code(self) -> str:
-        """Initialize new code blue session."""
+    def start_code(self, start_time: Optional[datetime] = None) -> str:
+        """Initialize new code blue session with optional manual start time."""
         self.session = CodeBlueSession()
+        if start_time:
+            self.session.start_time = start_time
         event = self.session.add_event("CODE_CALLED", "Code Blue initiated")
         return f"""
 🚨 **CODE BLUE INITIATED** - {event.format_time()}
@@ -278,7 +289,9 @@ class CodeBlueAgent:
         if not self.session:
             # Auto-start if saying code-related things
             if any(cmd in text.lower() for cmd in ["code", "cpr", "arrest"]):
-                return self.start_code()
+                # Check for manual start time
+                manual_time = self._extract_time(text) if hasattr(self, '_extract_time') else None
+                return self.start_code(manual_time)
             return "🎤 Say 'Code called' to start Code Blue documentation"
         
         text_lower = text.lower().strip()
@@ -341,6 +354,10 @@ class CodeBlueAgent:
             self.session.acls_path = ACLSPath.NON_SHOCKABLE
             event = self.add_event_with_time("RHYTHM", "Asystole", manual_time)
             return self._format_non_shockable_rhythm(event, "ASYSTOLE") + time_note
+        
+        if action == "rhythm_sinus":
+            event = self.add_event_with_time("RHYTHM", "Sinus rhythm - organized!", manual_time)
+            return f"💓 [{event.format_run_time()}] **Sinus Rhythm** - Organized rhythm!{time_note}\n\n🔍 **CHECK PULSE NOW!** Could be ROSC!"
         
         if action == "no_pulse":
             event = self.add_event_with_time("PULSE_CHECK", "No pulse", manual_time)
