@@ -1,130 +1,253 @@
-# 🩺 NurseGemma Code Blue
+# 🩺 NurseGemma
 
-**Voice-activated ACLS 2025 cardiac arrest assistant for nurses**
+**Agentic Medical AI for Nursing Practice**
 
-[![Demo](https://img.shields.io/badge/Demo-Live-green)](https://34700187b6e2aee5a2.gradio.live)
-[![Python](https://img.shields.io/badge/Python-3.10+-blue)](https://python.org)
-[![Gradio](https://img.shields.io/badge/Gradio-4.0+-orange)](https://gradio.app)
+*Built by a nurse, for nurses.*
 
-## 🎯 What It Does
-
-NurseGemma is a **mobile-first Code Blue assistant** that helps nurses:
-
-- 📱 **Document interventions in real-time** via voice or tap
-- ⏱️ **Track timing** for CPR, meds, and rhythm checks
-- 🎤 **Voice commands** during resuscitation (hands-busy scenarios)
-- 📋 **Generate charting reports** automatically for documentation
-- ✅ **ACLS 2025 compliant** prompts and guidance
-
-## 🚀 Quick Start
-
-### Live Demo
-**[Try it on your phone →](https://34700187b6e2aee5a2.gradio.live)**
-
-### Run Locally
-```bash
-# Clone
-git clone https://github.com/AIHeartICU/NurseGemma.git
-cd NurseGemma
-
-# Install
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Run
-python app.py
-```
-
-## 📱 How to Use
-
-### Button Interface (Fastest)
-1. **Tap CODE BLUE** to start
-2. **Identify rhythm**: V-Fib, V-Tach, Asystole, or PEA
-3. **Log interventions**: Shock, Epi, Amio, CPR, IV Access
-4. **Tap ROSC** when pulse returns
-5. **Generate Report** for charting
-
-### Voice Commands
-1. Tap **🎤 Voice** button
-2. Speak clearly: "V-fib", "Shock", "Epi given", "ROSC"
-3. Command auto-submits when you stop speaking
-
-## ⚡ ACLS 2025 Features
-
-| Feature | Description |
-|---------|-------------|
-| **Shockable vs Non-shockable** | Color-coded rhythm buttons (⚡ vs ❌) |
-| **Drug Timing** | Prompts for Epi q3-5min, Amio after 3rd shock |
-| **H's & T's Checklist** | Reversible causes reminder |
-| **Quality Metrics** | Time to first shock, time to first Epi |
-| **Post-ROSC Care** | Checklist for post-arrest management |
-
-## 📋 Documentation Report
-
-After ROSC, NurseGemma generates a complete Code Blue record:
-
-```
-╔══════════════════════════════════════════════════════════════╗
-║              CODE BLUE RECORD - ACLS 2025                    ║
-╚══════════════════════════════════════════════════════════════╝
-
-Date: 2026-01-31
-Time Called: 00:15:30
-Duration: 8 min 45 sec
-Outcome: ROSC
-
-MEDICATIONS:
-Epinephrine 1mg x 3 doses
-  Dose 1: 00:16:15
-  Dose 2: 00:19:30
-  Dose 3: 00:22:45
-
-DEFIBRILLATION:
-  Shock 1: 00:15:45 - 200J
-  Shock 2: 00:17:50 - 200J
-
-EVENT LOG:
-| Time     | Run   | Event       | Details                    |
-|----------|-------|-------------|----------------------------|
-| 00:15:30 | 00:00 | CODE_CALLED | Code Blue initiated        |
-| 00:15:35 | 00:05 | RHYTHM      | VF identified              |
-...
-```
-
-## 🛠️ Tech Stack
-
-- **Frontend**: Gradio (mobile-responsive)
-- **Backend**: Python
-- **Voice**: Web Speech API (browser-native)
-- **Model**: Rule-based ACLS logic (no LLM required for core functionality)
-
-## 📁 Project Structure
-
-```
-NurseGemma/
-├── app.py                 # Main Gradio app
-├── code_blue_agent.py     # ACLS logic & documentation
-├── acls_protocol.py       # ACLS 2025 reference data
-├── requirements.txt       # Dependencies
-└── tests/                 # Unit tests
-```
-
-## 🎓 Educational Purpose
-
-⚠️ **This is an educational tool for training purposes only.**
-
-- Not FDA approved for clinical use
-- Always follow your institution's protocols
-- Real codes require real equipment and trained personnel
-
-## 👨‍⚕️ Created By
-
-**James Perlas** ([@AIHeartICU](https://github.com/AIHeartICU))  
-ICU Nurse & AI Developer
-
-Built with ❤️ for the nursing community.
+[![MedGemma Impact Challenge](https://img.shields.io/badge/MedGemma-Impact%20Challenge%202026-blue)](https://www.kaggle.com/competitions/med-gemma-impact-challenge)
+[![Agentic AI](https://img.shields.io/badge/Category-Agentic%20AI-green)]()
+[![MedGemma 1.5](https://img.shields.io/badge/MedGemma-1.5%204B-orange)]()
 
 ---
 
-*ACLS 2025 guidelines from American Heart Association*
+## 🆕 New in MedGemma 1.5 Update!
+
+| Feature | Description | Nursing Use Case |
+|---------|-------------|------------------|
+| 🎤 **MedASR Voice Input** | Medical speech-to-text (82% fewer errors vs Whisper) | Hands-free bedside dictation |
+| 📊 **Longitudinal Comparison** | Compare X-rays over time | Track patient progression for handoffs |
+| 🧊 **3D CT/MRI Analysis** | Full volumetric scan interpretation | Comprehensive imaging assessment |
+| 🔬 **Lab Report Extraction** | Structured data from lab images (+18% accuracy) | Rapid lab interpretation |
+| 🗺️ **Anatomical Localization** | CXR landmark identification (+35% IoU) | Verify tube/line positions |
+
+---
+
+## 🏗️ Architecture
+
+NurseGemma uses a **multi-agent architecture** with Gemini as the orchestrator and MedGemma 1.5 as the medical specialist:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    USER INPUT                                 │
+│     Text Query | Voice (MedASR) | Single/Multiple Images     │
+└───────────────────────────┬──────────────────────────────────┘
+                            │
+                            ▼
+┌──────────────────────────────────────────────────────────────┐
+│                  GEMINI ORCHESTRATOR                          │
+│        Intent Classification | Routing | Synthesis            │
+└───────────────────────────┬──────────────────────────────────┘
+                            │
+    ┌───────────┬───────────┼───────────┬───────────┬──────────┐
+    ▼           ▼           ▼           ▼           ▼          ▼
+┌────────┐ ┌────────┐ ┌──────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+│ IMAGE  │ │LONGIT- │ │VOLUMETRIC│ │  LAB   │ │ANATOMY │ │EVIDENCE│
+│ AGENT  │ │UDINAL  │ │  AGENT   │ │ AGENT  │ │ AGENT  │ │ AGENT  │
+│        │ │ AGENT  │ │          │ │        │ │        │ │        │
+│MedGemma│ │MedGemma│ │ MedGemma │ │MedGemma│ │MedGemma│ │ Gemini │
+│1.5 4B  │ │1.5 4B  │ │ 1.5 4B   │ │1.5 4B  │ │1.5 4B  │ │Grounded│
+└────────┘ └────────┘ └──────────┘ └────────┘ └────────┘ └────────┘
+    │           │           │           │           │          │
+    └───────────┴───────────┴───────────┴───────────┴──────────┘
+                            │
+                            ▼
+              ┌─────────────────────────────┐
+              │  NURSING-FOCUSED RESPONSE   │
+              │  • Key Findings             │
+              │  • Nursing Considerations   │
+              │  • Safety Alerts            │
+              │  • Escalation Criteria      │
+              └─────────────────────────────┘
+```
+
+### Agent Roles
+
+| Agent | Model | Function |
+|-------|-------|----------|
+| **Orchestrator** | Gemini 2.0 Flash | Routes queries, classifies intent, synthesizes responses |
+| **Image Agent** | MedGemma 1.5 4B | Single image analysis (X-ray, CT, wound) |
+| **Longitudinal Agent** | MedGemma 1.5 4B | 🆕 Compare images over time (trending) |
+| **Volumetric Agent** | MedGemma 1.5 4B | 🆕 3D CT/MRI volume analysis |
+| **Lab Agent** | MedGemma 1.5 4B | 🆕 Lab report extraction & interpretation |
+| **Anatomy Agent** | MedGemma 1.5 4B | 🆕 CXR anatomical localization |
+| **Evidence Agent** | Gemini + Grounding | Guidelines search (SCCM, AACN, PubMed) |
+| **Clinical Agent** | MedGemma 1.5 4B | General clinical Q&A |
+
+---
+
+## 🎯 The Problem
+
+As an ICU nurse, I face two challenges daily:
+
+1. **40% of my shift is documentation** instead of patient care
+2. **Families wait anxiously** with questions they're afraid to ask
+
+NurseGemma bridges this gap with AI that understands nursing workflows.
+
+---
+
+## ✨ Features
+
+### 1. 🎤 Voice Input (MedASR) - NEW!
+Hands-free nursing mode. Dictate your questions while providing patient care.
+
+```
+"Patient in bed 4 has new onset confusion and left-sided weakness. Priority assessment?"
+```
+
+### 2. 📊 Longitudinal Comparison - NEW!
+Upload multiple X-rays to track patient progression over time.
+
+```
+"Compare the admission CXR to today's follow-up. Is the pneumonia improving?"
+```
+
+### 3. 🧊 3D CT/MRI Volumes - NEW!
+Upload multiple slices for comprehensive volumetric analysis.
+
+```
+"Analyze this CT scan - what are the key findings across all slices?"
+```
+
+### 4. 🔬 Lab Report Extraction - NEW!
+Upload a photo of lab results for instant extraction and interpretation.
+
+```
+"Extract all values from this CBC and interpret for a post-op patient"
+```
+
+### 5. 🖼️ Medical Image Analysis
+Analyze X-rays, CT scans, MRI, and wounds with nursing-focused interpretations.
+
+```
+"Analyze this chest X-ray for my ICU patient. What should I report to the physician?"
+```
+
+### 6. 💊 Clinical Q&A
+Get answers about medications, lab values, and procedures.
+
+```
+"What are the nursing considerations for Lasix (furosemide)?"
+```
+
+### 7. 📚 Evidence-Based Practice
+Search guidelines and literature for best practices.
+
+```
+"What does the evidence say about prone positioning in ARDS?"
+```
+
+---
+
+## 🚀 Quick Start
+
+### Option 1: Gradio Web UI (Local)
+
+```bash
+# Clone the repo
+git clone https://github.com/AIHeartICU/NurseGemma.git
+cd NurseGemma
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Set environment variables
+export GEMINI_API_KEY="your-gemini-api-key"  # Free from Google AI Studio
+
+# Optional: Enable MedGemma (requires GPU + HuggingFace access)
+export HF_TOKEN="your-huggingface-token"
+export USE_MEDGEMMA="true"
+export USE_MEDASR="true"
+
+# Run the app
+python app.py
+```
+
+### Option 2: HuggingFace Spaces
+
+Visit: [https://huggingface.co/spaces/AIHeartICU/nursegemma](https://huggingface.co/spaces/AIHeartICU/nursegemma)
+
+### Option 3: Kaggle Notebook
+
+1. Open `nursegemma.ipynb` on [Kaggle](https://www.kaggle.com/)
+2. Add your HuggingFace token to Kaggle Secrets as `HF_TOKEN`
+3. Enable GPU (Settings → Accelerator → GPU T4 x2)
+4. Run All
+
+---
+
+## 🔑 API Keys Required
+
+| Service | Purpose | Get Key |
+|---------|---------|---------|
+| **Gemini** | Orchestrator agent | [Google AI Studio](https://makersuite.google.com/app/apikey) (free) |
+| **HuggingFace** | MedGemma/MedASR access | [HuggingFace](https://huggingface.co/settings/tokens) |
+
+---
+
+## 🖼️ Sample Images for Testing
+
+Download from these Kaggle datasets to test image analysis:
+
+| Type | Dataset |
+|------|---------|
+| **Chest X-rays** | [NIH Chest X-ray Dataset](https://www.kaggle.com/datasets/nih-chest-xrays/data) |
+| **CT Scans** | [Chest CT-Scan Images](https://www.kaggle.com/datasets/mohamedhanyyy/chest-ctscan-images) |
+| **Brain MRI** | [Brain MRI Dataset](https://www.kaggle.com/datasets/navoneel/brain-mri-images-for-brain-tumor-detection) |
+| **Skin/Wound** | [Skin Cancer Dataset](https://www.kaggle.com/datasets/fanconic/skin-cancer-malignant-vs-benign) |
+
+---
+
+## 📝 Technical Overview
+
+### Why Agentic?
+
+Traditional medical AI is single-model, single-task. NurseGemma is different:
+
+1. **Intent Classification**: Gemini analyzes what you're asking
+2. **Smart Routing**: Queries go to specialized agents
+3. **Multi-Agent Collaboration**: Complex queries use multiple agents
+4. **Synthesis**: Orchestrator combines responses into cohesive answers
+
+### Why Nursing-Focused?
+
+- Nurses are the largest healthcare workforce (4M+ in US alone)
+- 40% of nursing time is spent on documentation
+- Families need information but nurses are stretched thin
+- ICU/critical care has highest information needs
+
+### MedGemma 1.5 Improvements Used
+
+- **3D Volumetric**: First open LLM with true 3D CT/MRI support
+- **Longitudinal Imaging**: Compare images over time (5% macro accuracy boost)
+- **Lab Extraction**: 18% F1 improvement on structured extraction
+- **Anatomical Localization**: 35% IoU improvement on CXR landmarks
+- **MedASR**: 82% fewer errors than Whisper on medical dictation
+
+---
+
+## ⚠️ Disclaimer
+
+NurseGemma is an **educational tool**. All outputs should be verified by qualified healthcare professionals. Not intended for diagnostic or treatment decisions.
+
+---
+
+## 📜 License
+
+MIT License
+
+---
+
+## 🙏 Acknowledgments
+
+- Google MedGemma team for the incredible open models
+- The nursing community for inspiring this project
+- MedGemma Impact Challenge organizers
+
+---
+
+*Built with ❤️ by a nurse who codes | MedGemma Impact Challenge 2026 - Agentic Category*
