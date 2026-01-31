@@ -1,6 +1,22 @@
 # NurseGemma - Current Status
 
-*Updated: 2026-01-30 14:15 PST*
+*Updated: 2026-01-31 06:50 UTC*
+
+---
+
+## 🆕 MedGemma 1.5 Update Complete!
+
+All new MedGemma 1.5 features have been implemented:
+
+| Feature | Status | Implementation |
+|---------|--------|----------------|
+| 🎤 **MedASR Voice Input** | ✅ Implemented | `transcribe_medical_audio()` with Whisper fallback |
+| 📊 **Longitudinal Agent** | ✅ Implemented | `LongitudinalAgent.compare()` for multi-image trending |
+| 🧊 **Volumetric Agent** | ✅ Implemented | `VolumetricAgent.analyze_volume()` for 3D CT/MRI |
+| 🔬 **Lab Report Agent** | ✅ Implemented | `LabReportAgent.extract_and_interpret()` |
+| 🗺️ **Anatomy Agent** | ✅ Implemented | `AnatomyAgent.localize()` for CXR landmarks |
+| 🧠 **Updated Orchestrator** | ✅ Implemented | Routes to 7 specialized agents |
+| 📱 **Multi-Image UI** | ✅ Implemented | 3 image upload slots for comparison/volume |
 
 ---
 
@@ -8,156 +24,127 @@
 
 | Component | Status | Verified |
 |-----------|--------|----------|
-| **Gemini 2.0 Flash Orchestrator** | ✅ Working | Routes IMAGE/CLINICAL/EVIDENCE |
+| **Gemini 2.0 Flash Orchestrator** | ✅ Working | Routes to all 7 agents |
 | **Clinical Agent** | ✅ Working | Nursing-focused responses |
 | **Evidence Agent** | ✅ Working | Guidelines search |
-| **Image Agent (Gemini)** | ✅ Working | Multimodal analysis |
+| **Image Agent (Gemini fallback)** | ✅ Working | Multimodal analysis |
+| **Longitudinal Agent** | ✅ Implemented | Multi-image comparison |
+| **Volumetric Agent** | ✅ Implemented | 3D CT/MRI support |
+| **Lab Report Agent** | ✅ Implemented | Structured extraction |
+| **Anatomy Agent** | ✅ Implemented | CXR localization |
+| **MedASR Voice Input** | ✅ Implemented | With Whisper fallback |
 | **Sample Images** | ✅ Working | 3 chest X-rays on GitHub |
 | **GitHub Repo** | ✅ Public | All code committed |
-| **Architecture Diagram** | ✅ Created | PNG screenshot |
-| **Technical Doc** | ✅ Complete | 3-page overview |
-| **Kaggle Checklist** | ✅ Complete | Submission guide |
-| **Local App** | ✅ Working | Gradio 6.x on local |
 
-## 🟡 In Progress
+## 🟡 Needs Testing
 
-| Component | Status | Issue |
-|-----------|--------|-------|
-| **HuggingFace Space** | 🟡 Building | Gradio version issues, pushed Gradio 5.9.1 fix |
+| Component | Status | Blocker |
+|-----------|--------|---------|
+| **MedGemma 1.5 4B** | 🟡 Needs GPU test | Requires T4/A10 GPU |
+| **MedASR** | 🟡 Needs GPU test | Requires GPU + HF access |
+| **HuggingFace Space** | 🟡 Needs rebuild | Push new code |
 
-## 🔴 Not Done
+## 🔴 Still TODO
 
 | Component | Priority | Time |
 |-----------|----------|------|
 | **3-min Video Demo** | P0 Critical | 2-3 hours |
 | **Kaggle Writeup** | P0 Critical | 1 hour |
-| **More Screenshots** | P1 | 30 min |
+| **Push to HF Spaces** | P0 Critical | 30 min |
+| **GPU Testing** | P1 Important | 1 hour |
 
 ---
 
-## Files in Repo
+## Files Updated
 
 ```
 NurseGemma/
-├── app.py                     ✅ Full agentic app
-├── local_server.py            ✅ MedGemma GPU server
-├── nursegemma.ipynb           ✅ Kaggle notebook
-├── requirements.txt           ✅ Dependencies
-├── README.md                  ✅ Documentation
-├── TECHNICAL_OVERVIEW.md      ✅ 3-page submission doc
-├── KAGGLE_SUBMISSION_CHECKLIST.md ✅ Submission guide
-├── GAP_ANALYSIS.md            ✅ Competition analysis
-├── CURRENT_STATUS.md          ✅ This file
-├── samples/
-│   ├── normal_cxr.png         ✅ Normal chest X-ray
-│   ├── pneumonia_covid_cxr.jpg ✅ COVID pneumonia
-│   └── viral_pneumonia_cxr.jpg ✅ Viral pneumonia
-├── screenshots/
-│   ├── architecture.png       ✅ Architecture diagram
-│   ├── architecture.html      ✅ Source HTML
-│   └── 01_main_ui.png         ✅ Main UI screenshot
-└── hf-space/                  ✅ HuggingFace Space code
+├── app.py                     ✅ UPDATED - All 7 agents, MedASR, multi-image UI
+├── requirements.txt           ✅ UPDATED - MedGemma 1.5, MedASR deps
+├── README.md                  ✅ UPDATED - New architecture diagram
+├── CURRENT_STATUS.md          ✅ UPDATED - This file
+├── hf-space/
+│   ├── app.py                 ✅ UPDATED - Deployment wrapper
+│   ├── requirements.txt       ✅ UPDATED - Minimal for Spaces
+│   └── README.md              ✅ UPDATED - Space card
+├── TECHNICAL_OVERVIEW.md      ⏳ Needs update
+├── KAGGLE_SUBMISSION_CHECKLIST.md  ⏳ Needs update
+└── GAP_ANALYSIS.md            ⏳ Needs update (gaps closed!)
 ```
 
 ---
 
-## Tested Functionality
+## Agent Architecture (Updated)
 
-### Orchestrator Routing (✅ All Pass)
 ```
-"Analyze chest X-ray for pneumonia" → IMAGE_AGENT ✅
-"Nursing considerations for Lasix" → CLINICAL_AGENT ✅  
-"Evidence for prone positioning" → EVIDENCE_AGENT ✅
-"Patient K+ is 3.1" → CLINICAL_AGENT ✅
+                    ┌─────────────────────┐
+      User Input →  │ GEMINI ORCHESTRATOR │
+                    └──────────┬──────────┘
+                               │
+       ┌───────┬───────┬───────┼───────┬───────┬───────┐
+       ↓       ↓       ↓       ↓       ↓       ↓       ↓
+   ┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐┌───────┐
+   │ IMAGE ││LONGIT-││VOLUME-││  LAB  ││ANATOMY││CLINIC-││EVIDEN-│
+   │ AGENT ││UDINAL ││ TRIC  ││ AGENT ││ AGENT ││  AL   ││  CE   │
+   └───────┘└───────┘└───────┘└───────┘└───────┘└───────┘└───────┘
+       │       │         │       │         │       │         │
+       └───────┴─────────┴───────┴─────────┴───────┴─────────┘
+                               │
+                    ┌──────────┴──────────┐
+                    │ NURSING-FOCUSED     │
+                    │ RESPONSE            │
+                    └─────────────────────┘
 ```
 
-### Agent Responses (✅ All Working)
-- **Clinical**: Returns nursing considerations, safety alerts, escalation criteria
-- **Evidence**: Returns guidelines summary, SCCM/AACN references
-- **Image**: Returns findings, nursing implications (with Gemini)
+---
 
-### Sample Images (✅ All Load)
-- normal_cxr.png: 512x624 PNG
-- pneumonia_covid_cxr.jpg: 1165x1163 JPEG
-- viral_pneumonia_cxr.jpg: 1170x1161 JPEG
+## Key Differentiators vs Competition
+
+| Feature | NurseGemma | Others |
+|---------|------------|--------|
+| **Domain Focus** | Nursing-specific | Generic medical |
+| **Voice Input** | MedASR hands-free | None |
+| **Longitudinal** | X-ray comparison | Single image only |
+| **3D Volumes** | CT/MRI slices | 2D only |
+| **Lab Extraction** | Structured + interpret | Raw OCR |
+| **Built By** | ICU Nurse | Engineers/Researchers |
 
 ---
 
-## HuggingFace Space Status
+## Next Steps
 
-**URL**: https://huggingface.co/spaces/AIHeartICU/nursegemma
-
-**Current Issues**:
-- Gradio version incompatibility with HF's Python 3.13
-- Fixed by using Gradio 5.9.1 in requirements
-- Currently rebuilding
-
-**Secrets Configured**:
-- GEMINI_API_KEY ✅
+1. [ ] **Commit & push to GitHub**
+2. [ ] **Push to HuggingFace Spaces**
+3. [ ] **Test with GPU on Kaggle**
+4. [ ] **Record video demo**
+5. [ ] **Write Kaggle submission**
 
 ---
 
-## To Complete for Kaggle Submission
+## Commands
 
-### P0 - Must Have
-1. [ ] **Video Demo (3 min)**
-   - Script ready in KAGGLE_SUBMISSION_CHECKLIST.md
-   - Show: Architecture → Image Demo → Clinical Demo → Evidence Demo
-   
-2. [ ] **Kaggle Writeup**
-   - Submit via Kaggle Writeups platform
-   - Include screenshots, video link, GitHub link
-
-### P1 - Should Have
-3. [ ] **Verify HF Space Working**
-   - Wait for rebuild to complete
-   - Test all features live
-
-4. [ ] **Additional Screenshots**
-   - Image analysis example
-   - Clinical Q&A example
-   - Evidence search example
-
----
-
-## Commands for Testing
-
-### Local Test
+### Local Test (Gemini-only mode)
 ```bash
 cd ~/NurseGemma
 source .venv/bin/activate
-export GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+export GEMINI_API_KEY="..."
 python app.py
 # Open http://127.0.0.1:7860
 ```
 
-### Check HF Space Status
+### Test with MedGemma (GPU required)
 ```bash
-curl -s "https://huggingface.co/api/spaces/AIHeartICU/nursegemma" | python3 -c "import sys,json; d=json.load(sys.stdin); print('Stage:', d['runtime']['stage'])"
+export USE_MEDGEMMA="true"
+export USE_MEDASR="true"
+export HF_TOKEN="..."
+python app.py
 ```
 
----
-
-## Timeline
-
-| Time | Task |
-|------|------|
-| Now | HF Space rebuilding |
-| +30 min | Verify HF Space working |
-| +1 hour | Take remaining screenshots |
-| +3 hours | Record & edit video |
-| +4 hours | Write Kaggle post |
-| Feb 24 | Deadline |
-
----
-
-## Competition Strengths
-
-1. **Unique Angle**: Only nursing-focused submission
-2. **Real Expertise**: Built by an ICU nurse
-3. **Agentic Architecture**: Multi-agent with orchestrator
-4. **Complete Package**: Code, docs, screenshots, video (soon)
-5. **Clear Impact**: 4M+ nurses, 40% documentation burden
+### Push to HuggingFace
+```bash
+cd hf-space
+huggingface-cli upload AIHeartICU/nursegemma . --repo-type=space
+```
 
 ---
 
