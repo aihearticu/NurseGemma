@@ -457,26 +457,39 @@ class CodeBlueAgent:
         
         # === ETCO2 Monitoring (ACLS 2025) ===
         if action == "etco2":
-            # Try to extract value from text
+            # Try to extract ETCO2 value from text
             import re
-            match = re.search(r'(\d+)', original_text)
-            if match:
-                value = int(match.group(1))
-                event_time = manual_time or datetime.now()
-                self.session.etco2_values.append((event_time, value))
-                event = self.add_event_with_time("ETCO2", f"{value} mmHg", manual_time)
-                
-                # ACLS interpretation
-                if value >= 40:
-                    interpretation = "🎉 **ETCO2 ≥40 - Possible ROSC!** Check pulse!"
-                elif value >= 10:
-                    interpretation = "✅ ETCO2 adequate - continue CPR"
-                else:
-                    interpretation = "⚠️ **Low ETCO2 (<10)** - Reassess CPR quality!"
-                
-                return f"📊 [{event.format_run_time()}] **ETCO2: {value} mmHg**{time_note}\n\n{interpretation}"
+            search_text = original_text.lower()
+            
+            # Remove any time patterns first (HH:MM or HH:MM:SS)
+            search_text = re.sub(r'\d{1,2}:\d{2}(:\d{2})?', '', search_text)
+            
+            # First try: number right after etco2/co2/end tidal
+            specific_match = re.search(r'(?:etco2|co2|end tidal|capnography)\s*[:\-]?\s*(\d+)', search_text)
+            if specific_match:
+                value = int(specific_match.group(1))
             else:
-                return "📊 Say ETCO2 value (e.g., 'ETCO2 25' or 'End tidal 40')"
+                # Fallback: find all remaining numbers (after time removed)
+                all_nums = re.findall(r'\b(\d{1,3})\b', search_text)
+                valid_nums = [int(n) for n in all_nums if 0 <= int(n) <= 100]
+                if valid_nums:
+                    value = valid_nums[-1]  # Take last number (usually the value)
+                else:
+                    return "📊 Say ETCO2 value (e.g., 'ETCO2 25' or 'End tidal 40')"
+            
+            event_time = manual_time or datetime.now()
+            self.session.etco2_values.append((event_time, value))
+            event = self.add_event_with_time("ETCO2", f"{value} mmHg", manual_time)
+            
+            # ACLS interpretation
+            if value >= 40:
+                interpretation = "🎉 **ETCO2 ≥40 - Possible ROSC!** Check pulse!"
+            elif value >= 10:
+                interpretation = "✅ ETCO2 adequate - continue CPR"
+            else:
+                interpretation = "⚠️ **Low ETCO2 (<10)** - Reassess CPR quality!"
+            
+            return f"📊 [{event.format_run_time()}] **ETCO2: {value} mmHg**{time_note}\n\n{interpretation}"
         
         # === H's and T's Checklist ===
         if action == "hs_ts_check":
@@ -980,6 +993,7 @@ Time: {s.access_time.strftime('%H:%M:%S') if s.access_time else "N/A"}
         else:
             record += "  Not recorded\n"
 
+        record += """
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 **EVENT LOG:**
 """
