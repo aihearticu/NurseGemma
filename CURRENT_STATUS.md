@@ -1,101 +1,84 @@
 # NurseGemma - Current Status
 
-**Last Updated:** 2026-01-30 23:30 PST
+## 📊 Status: WORKING ✅
 
-## 🎯 Competition Status
+**Last Updated:** 2026-01-31 00:16 PST
 
-| Item | Status |
-|------|--------|
-| Kaggle Competition | [MedGemma Impact Challenge 2026](https://www.kaggle.com/competitions/med-gemma-impact-challenge) |
-| Category | Agentic AI (7 specialized agents) |
-| Model | MedGemma 1.5 4B |
-| Submission Format | Notebook + Demo |
+## 🔗 Live Demo
 
-## ✅ Completed Features
+**https://34700187b6e2aee5a2.gradio.live**
 
-### Code Blue Agent (ACLS 2025 Compliant)
-Real-time voice-activated cardiac arrest documentation
+(Share link expires in 1 week - run `python app.py` locally for permanent access)
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| Voice Commands | ✅ Complete | 25+ commands recognized |
-| ACLS Drug Timing | ✅ Complete | VF: Epi after 2nd shock, Amio after 3rd |
-| ETCO2 Monitoring | ✅ Complete | ROSC detection (≥40 mmHg) |
-| H's & T's Checklist | ✅ Complete | Reversible causes prompts |
-| CPR Quality | ✅ Complete | Compressor switch reminders |
-| Code Record | ✅ Complete | Generates timestamped documentation |
-| Test Suite | ✅ Complete | 16 tests, all passing |
+## ✅ What's Working
 
-### Multi-Agent Architecture
-| Agent | Model | Status |
-|-------|-------|--------|
-| Orchestrator | Gemini 2.0 Flash | ✅ Designed |
-| Image Agent | MedGemma 1.5 4B | ✅ Designed |
-| Longitudinal Agent | MedGemma 1.5 4B | ✅ Designed |
-| Volumetric Agent | MedGemma 1.5 4B | ✅ Designed |
-| Lab Agent | MedGemma 1.5 4B | ✅ Designed |
-| Anatomy Agent | MedGemma 1.5 4B | ✅ Designed |
-| Evidence Agent | Gemini + Grounding | ✅ Designed |
+### Core Features
+- [x] CODE BLUE initiation with timer
+- [x] Rhythm identification (V-Fib, V-Tach, Asystole, PEA)
+- [x] Intervention logging (Shock, Epi, Amio, CPR, IV)
+- [x] ROSC detection and celebration 🎉
+- [x] H's & T's checklist
+- [x] Full documentation report generation
 
-## 🔧 Infrastructure
+### ACLS 2025 Compliance
+- [x] Shockable vs Non-shockable pathway logic
+- [x] Drug timing reminders (Epi q3-5min)
+- [x] Amiodarone after 3rd shock
+- [x] CPR quality prompts
+- [x] Post-ROSC care checklist
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| GitHub Repo | ✅ Ready | AIHeartICU/NurseGemma |
-| Local Dev | ✅ Working | Python 3.12, venv |
-| HF Space | 🔄 Pending | CPU mode (no GPU quota) |
-| Requirements | ✅ Complete | requirements.txt |
+### UI/UX
+- [x] Mobile-responsive design
+- [x] Large touch-friendly buttons (52px+)
+- [x] High contrast for ICU lighting
+- [x] Status bar with live timer
+- [x] Voice input with visual feedback
+
+### Documentation
+- [x] Timestamped event log
+- [x] Quality metrics (time to first shock/epi)
+- [x] Medication tracking with doses
+- [x] Rhythm progression history
+- [x] Copy-ready report format
+
+## 🔧 Known Issues
+
+1. **Voice recognition** - Works best in Chrome/Safari, can be finicky
+2. **Timer doesn't auto-refresh** - Updates on each action
+3. **Gradio 6.0 warnings** - CSS/theme parameter deprecation (cosmetic)
 
 ## 📁 Key Files
 
+| File | Purpose |
+|------|---------|
+| `app.py` | Main Gradio application |
+| `code_blue_agent.py` | ACLS logic & documentation |
+| `acls_protocol.py` | ACLS 2025 reference data |
+| `requirements.txt` | Python dependencies |
+
+## 🚀 Next Steps
+
+1. [ ] Deploy to HuggingFace Spaces for permanent hosting
+2. [ ] Add real-time timer refresh
+3. [ ] Add copy-to-clipboard for report
+4. [ ] Test with actual nurses for feedback
+5. [ ] Record demo video
+
+## 💻 Development
+
+```bash
+# Run locally
+cd ~/NurseGemma
+source .venv/bin/activate
+python app.py
+
+# Or via tmux (persistent)
+tmux attach -t nurse
 ```
-NurseGemma/
-├── app.py                 # Main Gradio UI
-├── code_blue_agent.py     # ACLS 2025 compliant Code Blue
-├── acls_protocol.py       # Drug dosing, algorithms, CPR metrics
-├── gpu_backend.py         # MedGemma model loading
-├── requirements.txt       # Dependencies
-├── tests/
-│   └── test_acls_compliance.py  # 16 ACLS tests
-└── hf-space/              # HuggingFace Space files
+
+## 📝 Commits
+
+See git log for full history:
+```bash
+git log --oneline -10
 ```
-
-## 📋 Next Steps
-
-### High Priority
-1. [ ] Deploy to HuggingFace Space (CPU mode ready)
-2. [ ] Create Kaggle notebook for submission
-3. [ ] Test MedGemma integration when GPU available
-4. [ ] Add demo video for judges
-
-### Nice to Have
-- [ ] Voice input via MedASR
-- [ ] Multi-image longitudinal comparison
-- [ ] 3D volumetric CT analysis
-
-## 🔑 API Keys Needed
-
-| Service | Purpose | Status |
-|---------|---------|--------|
-| Gemini | Orchestrator | ✅ Have key |
-| HuggingFace | MedGemma access | ✅ Have token |
-| Kaggle | Notebook submission | ✅ Account ready |
-
-## 📊 ACLS 2025 Reference
-
-**VF/pVT Algorithm:**
-1. Shock → CPR 2min
-2. Shock → CPR + **Epi 1mg** → 2min
-3. Shock → CPR + **Amio 300mg** → 2min
-4. Continue: Shock → Epi q3-5min → Check H's & T's
-
-**PEA/Asystole Algorithm:**
-1. CPR + **Epi ASAP** → 2min
-2. Rhythm check + Epi q3-5min
-3. Treat reversible causes (H's & T's)
-
-**CPR Quality Metrics:**
-- Rate: 100-120/min
-- Depth: ≥2 inches
-- Fraction: >80%
-- Compressor switch: q2min
