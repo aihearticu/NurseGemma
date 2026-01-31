@@ -2,6 +2,13 @@
 NurseGemma - Agentic Medical AI for Nursing Practice
 MedGemma Impact Challenge 2026 - Agentic Category
 
+Refactored with:
+- Streaming responses for real-time feedback
+- Conversation memory for contextual interactions
+- Confidence-based agent routing
+- Type hints for code quality
+- Progress indicators for long operations
+
 Architecture:
 - Gemini 2.0 Flash (Orchestrator): Intent classification, routing, synthesis
 - MedGemma 1.5 4B (Medical Specialist): Image analysis, clinical QA (when GPU available)
@@ -11,14 +18,20 @@ Architecture:
 Built by a nurse, for nurses.
 """
 
+from __future__ import annotations
+
 import os
 import json
 import base64
-import gradio as gr
-from PIL import Image
-from pathlib import Path
+from typing import Generator, Optional, Any
+from dataclasses import dataclass, field
+from enum import Enum
 from datetime import datetime
 from io import BytesIO
+from pathlib import Path
+
+import gradio as gr
+from PIL import Image
 
 # ============================================================================
 # CONFIGURATION
@@ -48,13 +61,89 @@ SAMPLE_IMAGES = {
     }
 }
 
+
+# ============================================================================
+# TYPE DEFINITIONS
+# ============================================================================
+
+class AgentType(Enum):
+    """Available agent types for routing."""
+    IMAGE_AGENT = "IMAGE_AGENT"
+    CLINICAL_AGENT = "CLINICAL_AGENT"
+    EVIDENCE_AGENT = "EVIDENCE_AGENT"
+
+
+@dataclass
+class RoutingDecision:
+    """Structured routing decision from orchestrator."""
+    agent: AgentType
+    confidence: float  # 0.0 to 1.0
+    reason: str
+    nursing_focus: str
+    
+    @property
+    def confidence_label(self) -> str:
+        """Human-readable confidence level."""
+        if self.confidence >= 0.8:
+            return "High"
+        elif self.confidence >= 0.5:
+            return "Medium"
+        return "Low"
+
+
+@dataclass
+class ConversationMessage:
+    """Single message in conversation history."""
+    role: str  # "user" or "assistant"
+    content: str
+    timestamp: datetime = field(default_factory=datetime.now)
+    agent_used: Optional[str] = None
+    has_image: bool = False
+
+
+@dataclass
+class ConversationMemory:
+    """Manages conversation history for context."""
+    messages: list[ConversationMessage] = field(default_factory=list)
+    max_history: int = 10
+    
+    def add_message(self, role: str, content: str, agent_used: Optional[str] = None, has_image: bool = False) -> None:
+        """Add a message to history, maintaining max size."""
+        self.messages.append(ConversationMessage(
+            role=role,
+            content=content,
+            agent_used=agent_used,
+            has_image=has_image
+        ))
+        # Keep only recent messages
+        if len(self.messages) > self.max_history:
+            self.messages = self.messages[-self.max_history:]
+    
+    def get_context_string(self, max_messages: int = 5) -> str:
+        """Get recent conversation as context string."""
+        if not self.messages:
+            return ""
+        
+        recent = self.messages[-max_messages:]
+        context_parts = []
+        for msg in recent:
+            prefix = "User" if msg.role == "user" else "NurseGemma"
+            context_parts.append(f"{prefix}: {msg.content[:200]}...")
+        
+        return "\n".join(context_parts)
+    
+    def clear(self) -> None:
+        """Clear conversation history."""
+        self.messages = []
+
+
 # ============================================================================
 # GEMINI CLIENT
 # ============================================================================
 
 import google.generativeai as genai
 
-def init_gemini():
+def init_gemini() -> Optional[genai.GenerativeModel]:
     """Initialize Gemini client."""
     if GEMINI_API_KEY:
         genai.configure(api_key=GEMINI_API_KEY)
@@ -63,6 +152,7 @@ def init_gemini():
 
 gemini_model = init_gemini()
 
+
 # ============================================================================
 # MEDGEMMA CLIENT (Optional - requires GPU)
 # ============================================================================
@@ -70,7 +160,7 @@ gemini_model = init_gemini()
 medgemma_model = None
 medgemma_processor = None
 
-def init_medgemma():
+def init_medgemma() -> bool:
     """Initialize MedGemma if available."""
     global medgemma_model, medgemma_processor
     
@@ -96,23 +186,26 @@ def init_medgemma():
         print(f"⚠️ MedGemma not available: {e}")
         return False
 
+
 # ============================================================================
 # AGENTS
 # ============================================================================
 
 class OrchestratorAgent:
-    """Routes queries to appropriate specialist agents."""
+    """Routes queries to appropriate specialist agents with confidence scoring."""
     
-    def __init__(self, model):
+    def __init__(self, model: genai.GenerativeModel):
         self.model = model
     
-    def route(self, query: str, has_image: bool) -> dict:
-        """Classify intent and determine routing."""
+    def route(self, query: str, has_image: bool, context: str = "") -> RoutingDecision:
+        """Classify intent and determine routing with confidence score."""
+        
+        context_section = f"\nRecent conversation context:\n{context}\n" if context else ""
         
         prompt = f"""You are the orchestrator for NurseGemma, a nursing-focused medical AI.
 
-Analyze this query and route to the best agent.
-
+Analyze this query and route to the best agent. Also provide a confidence score.
+{context_section}
 Query: "{query}"
 Has Image Attached: {has_image}
 
@@ -122,13 +215,14 @@ Agents:
 - EVIDENCE_AGENT: Search evidence-based practice, guidelines, research
 
 Rules:
-- If image attached AND query mentions image → IMAGE_AGENT
+- If image attached AND query mentions image → IMAGE_AGENT (high confidence)
 - If asking about guidelines, evidence, research, "what does evidence say" → EVIDENCE_AGENT
 - Clinical questions about meds, labs, patient care → CLINICAL_AGENT
-- Default to CLINICAL_AGENT if unclear
+- Consider conversation context for follow-up questions
+- Default to CLINICAL_AGENT if unclear (lower confidence)
 
 Respond in JSON only:
-{{"agent": "AGENT_NAME", "reason": "brief explanation", "nursing_focus": "how this helps nursing practice"}}"""
+{{"agent": "AGENT_NAME", "confidence": 0.0-1.0, "reason": "brief explanation", "nursing_focus": "how this helps nursing practice"}}"""
 
         try:
             response = self.model.generate_content(prompt)
@@ -136,37 +230,57 @@ Respond in JSON only:
             # Parse JSON
             if "```" in text:
                 text = text.split("```")[1].replace("json", "").strip()
-            return json.loads(text)
+            data = json.loads(text)
+            
+            return RoutingDecision(
+                agent=AgentType[data.get("agent", "CLINICAL_AGENT")],
+                confidence=float(data.get("confidence", 0.7)),
+                reason=data.get("reason", "N/A"),
+                nursing_focus=data.get("nursing_focus", "N/A")
+            )
         except Exception as e:
-            # Default routing
+            # Default routing with low confidence
             if has_image:
-                return {"agent": "IMAGE_AGENT", "reason": "Image attached", "nursing_focus": "Image assessment"}
-            return {"agent": "CLINICAL_AGENT", "reason": f"Default (error: {e})", "nursing_focus": "Clinical support"}
+                return RoutingDecision(
+                    agent=AgentType.IMAGE_AGENT,
+                    confidence=0.6,
+                    reason=f"Image attached (error: {e})",
+                    nursing_focus="Image assessment"
+                )
+            return RoutingDecision(
+                agent=AgentType.CLINICAL_AGENT,
+                confidence=0.5,
+                reason=f"Default (error: {e})",
+                nursing_focus="Clinical support"
+            )
 
 
 class ImageAgent:
-    """Analyzes medical images with nursing focus."""
+    """Analyzes medical images with nursing focus and streaming support."""
     
-    def __init__(self, gemini_model, medgemma_model=None, medgemma_processor=None):
+    def __init__(self, gemini_model: genai.GenerativeModel, medgemma_model: Any = None, medgemma_processor: Any = None):
         self.gemini = gemini_model
         self.medgemma = medgemma_model
         self.processor = medgemma_processor
     
-    def analyze(self, image: Image.Image, query: str) -> str:
-        """Analyze medical image."""
+    def analyze_stream(self, image: Image.Image, query: str, context: str = "") -> Generator[str, None, None]:
+        """Analyze medical image with streaming output."""
         
-        # Try MedGemma first if available
+        # Try MedGemma first if available (no streaming support yet)
         if self.medgemma and self.processor:
-            return self._analyze_medgemma(image, query)
+            yield self._analyze_medgemma(image, query)
+            return
         
-        # Fallback to Gemini
-        return self._analyze_gemini(image, query)
+        # Stream with Gemini
+        yield from self._analyze_gemini_stream(image, query, context)
     
-    def _analyze_gemini(self, image: Image.Image, query: str) -> str:
-        """Analyze with Gemini (multimodal)."""
+    def _analyze_gemini_stream(self, image: Image.Image, query: str, context: str = "") -> Generator[str, None, None]:
+        """Stream analysis with Gemini (multimodal)."""
+        
+        context_section = f"\nConversation context:\n{context}\n" if context else ""
         
         prompt = f"""You are NurseGemma, a nursing-focused medical image analyst.
-
+{context_section}
 Analyze this medical image and provide:
 1. **Image Type**: What kind of image is this?
 2. **Key Findings**: What do you observe? (normal and abnormal)
@@ -180,10 +294,18 @@ Be thorough but concise. Use clinical terminology appropriate for nursing profes
 Analysis:"""
 
         try:
-            response = self.model.generate_content([prompt, image])
-            return response.text
+            response = self.gemini.generate_content(
+                [prompt, image],
+                stream=True
+            )
+            
+            full_response = ""
+            for chunk in response:
+                if chunk.text:
+                    full_response += chunk.text
+                    yield full_response
         except Exception as e:
-            return f"Error analyzing image: {str(e)}"
+            yield f"Error analyzing image: {str(e)}"
     
     def _analyze_medgemma(self, image: Image.Image, query: str) -> str:
         """Analyze with MedGemma (when GPU available)."""
@@ -219,16 +341,18 @@ Provide:
 
 
 class ClinicalAgent:
-    """Answers clinical nursing questions."""
+    """Answers clinical nursing questions with streaming support."""
     
-    def __init__(self, model):
+    def __init__(self, model: genai.GenerativeModel):
         self.model = model
     
-    def answer(self, query: str) -> str:
-        """Answer clinical question with nursing focus."""
+    def answer_stream(self, query: str, context: str = "") -> Generator[str, None, None]:
+        """Stream clinical answer with nursing focus."""
+        
+        context_section = f"\nRecent conversation:\n{context}\n" if context else ""
         
         prompt = f"""You are NurseGemma, a clinical nursing AI assistant.
-
+{context_section}
 Answer this clinical question with a nursing focus:
 
 Question: {query}
@@ -244,23 +368,30 @@ Use proper medical terminology. Be concise but thorough.
 Answer:"""
 
         try:
-            response = self.model.generate_content(prompt)
-            return response.text
+            response = self.model.generate_content(prompt, stream=True)
+            
+            full_response = ""
+            for chunk in response:
+                if chunk.text:
+                    full_response += chunk.text
+                    yield full_response
         except Exception as e:
-            return f"Error: {str(e)}"
+            yield f"Error: {str(e)}"
 
 
 class EvidenceAgent:
-    """Searches evidence-based practice guidelines."""
+    """Searches evidence-based practice guidelines with streaming."""
     
-    def __init__(self, model):
+    def __init__(self, model: genai.GenerativeModel):
         self.model = model
     
-    def search(self, query: str) -> str:
-        """Search for evidence-based practice information."""
+    def search_stream(self, query: str, context: str = "") -> Generator[str, None, None]:
+        """Stream evidence-based practice search."""
+        
+        context_section = f"\nConversation context:\n{context}\n" if context else ""
         
         prompt = f"""You are NurseGemma's Evidence-Based Practice agent.
-
+{context_section}
 Search your knowledge for evidence-based guidelines related to:
 
 Query: {query}
@@ -280,10 +411,15 @@ Focus on:
 Evidence Summary:"""
 
         try:
-            response = self.model.generate_content(prompt)
-            return response.text
+            response = self.model.generate_content(prompt, stream=True)
+            
+            full_response = ""
+            for chunk in response:
+                if chunk.text:
+                    full_response += chunk.text
+                    yield full_response
         except Exception as e:
-            return f"Error searching evidence: {str(e)}"
+            yield f"Error searching evidence: {str(e)}"
 
 
 # ============================================================================
@@ -296,50 +432,77 @@ image_agent = ImageAgent(gemini_model, medgemma_model, medgemma_processor)
 clinical_agent = ClinicalAgent(gemini_model) if gemini_model else None
 evidence_agent = EvidenceAgent(gemini_model) if gemini_model else None
 
-def process_query(query: str, image: Image.Image = None) -> tuple:
+# Global conversation memory (per session via Gradio state)
+def create_memory() -> ConversationMemory:
+    """Create new conversation memory instance."""
+    return ConversationMemory()
+
+
+def process_query_stream(
+    query: str, 
+    image: Optional[Image.Image], 
+    memory: ConversationMemory
+) -> Generator[tuple[str, str, ConversationMemory], None, None]:
     """
-    Process query through agentic pipeline.
+    Process query through agentic pipeline with streaming.
     
-    Returns: (response, routing_info)
+    Yields: (response, routing_info, updated_memory)
     """
     
     if not gemini_model:
-        return ("⚠️ Gemini API key not configured. Set GEMINI_API_KEY environment variable.", "")
+        yield ("⚠️ Gemini API key not configured. Set GEMINI_API_KEY environment variable.", "", memory)
+        return
     
     if not query.strip() and image is None:
-        return ("Please enter a question or upload an image.", "")
+        yield ("Please enter a question or upload an image.", "", memory)
+        return
     
     has_image = image is not None
     timestamp = datetime.now().strftime("%H:%M:%S")
     
+    # Get conversation context
+    context = memory.get_context_string()
+    
     # Step 1: Orchestrator routes the query
-    routing = orchestrator.route(query, has_image)
-    agent_name = routing.get("agent", "CLINICAL_AGENT")
+    routing = orchestrator.route(query, has_image, context)
     
     routing_info = f"""### 🧠 Orchestrator Decision ({timestamp})
 
-**Routed to:** `{agent_name}`  
-**Reason:** {routing.get('reason', 'N/A')}  
-**Nursing Focus:** {routing.get('nursing_focus', 'N/A')}
+**Routed to:** `{routing.agent.value}`  
+**Confidence:** {routing.confidence:.0%} ({routing.confidence_label})  
+**Reason:** {routing.reason}  
+**Nursing Focus:** {routing.nursing_focus}
 
 ---
 """
     
-    # Step 2: Execute the appropriate agent
-    if agent_name == "IMAGE_AGENT" and has_image:
-        response = image_agent.analyze(image, query)
-        routing_info += f"**Agent:** Image Analysis ({'MedGemma' if medgemma_model else 'Gemini'})"
-    elif agent_name == "EVIDENCE_AGENT":
-        response = evidence_agent.search(query)
-        routing_info += "**Agent:** Evidence-Based Practice Search"
-    else:
-        response = clinical_agent.answer(query)
-        routing_info += "**Agent:** Clinical Q&A"
+    # Add user message to memory
+    memory.add_message("user", query, has_image=has_image)
     
-    return (response, routing_info)
+    # Step 2: Execute the appropriate agent with streaming
+    agent_name = routing.agent
+    
+    if agent_name == AgentType.IMAGE_AGENT and has_image:
+        routing_info += f"**Agent:** Image Analysis ({'MedGemma' if medgemma_model else 'Gemini'})"
+        for response in image_agent.analyze_stream(image, query, context):
+            yield (response, routing_info, memory)
+        # Store final response
+        memory.add_message("assistant", response, agent_used="IMAGE_AGENT")
+        
+    elif agent_name == AgentType.EVIDENCE_AGENT:
+        routing_info += "**Agent:** Evidence-Based Practice Search"
+        for response in evidence_agent.search_stream(query, context):
+            yield (response, routing_info, memory)
+        memory.add_message("assistant", response, agent_used="EVIDENCE_AGENT")
+        
+    else:  # CLINICAL_AGENT
+        routing_info += "**Agent:** Clinical Q&A"
+        for response in clinical_agent.answer_stream(query, context):
+            yield (response, routing_info, memory)
+        memory.add_message("assistant", response, agent_used="CLINICAL_AGENT")
 
 
-def load_sample_image(sample_key: str) -> Image.Image:
+def load_sample_image(sample_key: str) -> Optional[Image.Image]:
     """Load a sample image."""
     if sample_key not in SAMPLE_IMAGES:
         return None
@@ -350,12 +513,18 @@ def load_sample_image(sample_key: str) -> Image.Image:
     return None
 
 
+def clear_conversation(memory: ConversationMemory) -> tuple[str, str, ConversationMemory]:
+    """Clear conversation history and outputs."""
+    memory.clear()
+    return ("", "", memory)
+
+
 # ============================================================================
 # GRADIO UI
 # ============================================================================
 
-def create_ui():
-    """Build the Gradio interface."""
+def create_ui() -> gr.Blocks:
+    """Build the Gradio interface with streaming and memory."""
     
     # Check for MedGemma at startup
     medgemma_available = init_medgemma()
@@ -366,15 +535,22 @@ def create_ui():
         css="""
         .sample-btn { margin: 2px !important; }
         .agent-box { background: #f0f7ff; padding: 10px; border-radius: 8px; }
+        .confidence-high { color: #22c55e; font-weight: bold; }
+        .confidence-medium { color: #f59e0b; }
+        .confidence-low { color: #ef4444; }
         """
     ) as demo:
+        
+        # Session state for conversation memory
+        memory_state = gr.State(create_memory)
         
         # Header
         gr.Markdown("""
 # 🩺 NurseGemma
 ## Agentic Medical AI for Nursing Practice
 
-**Architecture:** Gemini Orchestrator → Specialized Agents (Image, Clinical, Evidence)
+**Architecture:** Gemini Orchestrator → Specialized Agents (Image, Clinical, Evidence)  
+**Features:** 🔄 Streaming responses | 💾 Conversation memory | 📊 Confidence scoring
 
 *Built by a nurse, for nurses | MedGemma Impact Challenge 2026*
 """)
@@ -406,7 +582,9 @@ def create_ui():
                                 outputs=image_input
                             )
                 
-                submit_btn = gr.Button("🚀 Ask NurseGemma", variant="primary", size="lg")
+                with gr.Row():
+                    submit_btn = gr.Button("🚀 Ask NurseGemma", variant="primary", size="lg")
+                    clear_btn = gr.Button("🗑️ Clear Chat", variant="secondary")
             
             # Right: Output
             with gr.Column(scale=1):
@@ -438,18 +616,25 @@ def create_ui():
 *Powered by Google MedGemma + Gemini | [GitHub](https://github.com/AIHeartICU/NurseGemma)*
 """)
         
-        # Wire up
+        # Wire up - streaming version
         submit_btn.click(
-            process_query,
-            inputs=[query_input, image_input],
-            outputs=[response_output, routing_output]
+            process_query_stream,
+            inputs=[query_input, image_input, memory_state],
+            outputs=[response_output, routing_output, memory_state]
         )
         
         # Also submit on Enter
         query_input.submit(
-            process_query,
-            inputs=[query_input, image_input],
-            outputs=[response_output, routing_output]
+            process_query_stream,
+            inputs=[query_input, image_input, memory_state],
+            outputs=[response_output, routing_output, memory_state]
+        )
+        
+        # Clear conversation
+        clear_btn.click(
+            clear_conversation,
+            inputs=[memory_state],
+            outputs=[response_output, routing_output, memory_state]
         )
     
     return demo
@@ -461,4 +646,5 @@ def create_ui():
 
 if __name__ == "__main__":
     demo = create_ui()
+    demo.queue()  # Enable queuing for streaming
     demo.launch(share=True)

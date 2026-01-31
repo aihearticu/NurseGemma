@@ -9,6 +9,14 @@
 
 ---
 
+## ✨ Key Features (v2.0)
+
+- **🔄 Streaming Responses** - Real-time token-by-token output for better UX
+- **💾 Conversation Memory** - Maintains context across questions within a session
+- **📊 Confidence Scoring** - Orchestrator provides confidence levels for routing decisions
+- **🔧 Type Hints** - Full type annotations for better code quality and IDE support
+- **⚡ Queue Support** - Proper request queuing for concurrent users
+
 ## 🏗️ Architecture
 
 NurseGemma uses a **multi-agent architecture** with Gemini as the orchestrator and MedGemma as the medical specialist:
