@@ -937,6 +937,10 @@ volumetric_agent = VolumetricAgent(gemini_model, medgemma_model, medgemma_proces
 lab_agent = LabReportAgent(gemini_model, medgemma_model, medgemma_processor)
 anatomy_agent = AnatomyAgent(gemini_model, medgemma_model, medgemma_processor)
 
+# Code Blue Agent (voice-activated ACLS documentation)
+from code_blue_agent import CodeBlueAgent
+code_blue_agent = CodeBlueAgent()
+
 
 # ============================================================================
 # MAIN PROCESSING
@@ -1095,7 +1099,7 @@ def create_ui():
         with gr.Row():
             gr.Markdown("🎤 **MedASR Voice Input** - Hands-free dictation", elem_classes="new-feature")
             gr.Markdown("📊 **Longitudinal Comparison** - Track progression", elem_classes="new-feature")
-            gr.Markdown("🧊 **3D CT/MRI Volumes** - Multi-slice analysis", elem_classes="new-feature")
+            gr.Markdown("🚨 **Code Blue Mode** - Voice-activated ACLS", elem_classes="new-feature")
             gr.Markdown("🔬 **Lab Extraction** - Structured data", elem_classes="new-feature")
         
         gr.Markdown("---")
@@ -1231,6 +1235,105 @@ def create_ui():
                     ],
                     inputs=[query_input],
                 )
+        
+        # ========================================================================
+        # 🚨 CODE BLUE MODE - Voice-Activated ACLS Documentation
+        # ========================================================================
+        gr.Markdown("---")
+        gr.Markdown("## 🚨 Code Blue Mode")
+        gr.Markdown("*Voice-activated cardiac arrest documentation with ACLS algorithm guidance*")
+        
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("### 🎤 Voice Commands")
+                
+                code_blue_audio = gr.Audio(
+                    sources=["microphone"],
+                    type="filepath",
+                    label="🔴 Click to speak (hands-free during code)"
+                )
+                
+                code_blue_text = gr.Textbox(
+                    label="Or type command",
+                    placeholder="CPR started, Epi given, V-fib, Shock delivered, ROSC...",
+                    lines=1
+                )
+                
+                with gr.Row():
+                    start_code_btn = gr.Button("🚨 Start Code Blue", variant="primary")
+                    end_code_btn = gr.Button("⏹️ End Code", variant="secondary")
+                
+                gr.Markdown("""
+**Voice Commands:**
+| Say This | Action |
+|----------|--------|
+| "CPR started" | Start CPR timer |
+| "V-fib" / "Asystole" / "PEA" | Log rhythm |
+| "Epi given" | Log epinephrine |
+| "Shock delivered" | Log defibrillation |
+| "ROSC" | Return of circulation |
+| "Switch" | Compressor change |
+""")
+            
+            with gr.Column(scale=1):
+                gr.Markdown("### 📋 Code Blue Record")
+                code_blue_output = gr.Markdown(
+                    value="🎤 Say **'Code called'** or click **Start Code Blue** to begin documentation",
+                    label="Live Documentation"
+                )
+                code_blue_status = gr.Markdown(value="", label="Status")
+        
+        # Code Blue processing function
+        def process_code_blue(audio_path, text_input):
+            """Process Code Blue voice/text input."""
+            # Get text from voice or text input
+            if audio_path:
+                text = transcribe_medical_audio(audio_path)
+            else:
+                text = text_input
+            
+            if not text or not text.strip():
+                return code_blue_agent.get_status() if code_blue_agent.session else "🎤 Waiting for input...", ""
+            
+            # Process through Code Blue agent
+            response = code_blue_agent.process_voice(text)
+            status = code_blue_agent.get_status() if code_blue_agent.session else ""
+            
+            return response, status
+        
+        def start_code():
+            """Start a new Code Blue session."""
+            return code_blue_agent.start_code(), code_blue_agent.get_status()
+        
+        def end_code():
+            """End Code Blue and generate record."""
+            if code_blue_agent.session:
+                response = code_blue_agent.process_voice("code ended")
+                return response, ""
+            return "No active code", ""
+        
+        # Wire up Code Blue
+        code_blue_audio.change(
+            process_code_blue,
+            inputs=[code_blue_audio, code_blue_text],
+            outputs=[code_blue_output, code_blue_status]
+        )
+        
+        code_blue_text.submit(
+            process_code_blue,
+            inputs=[code_blue_audio, code_blue_text],
+            outputs=[code_blue_output, code_blue_status]
+        )
+        
+        start_code_btn.click(
+            start_code,
+            outputs=[code_blue_output, code_blue_status]
+        )
+        
+        end_code_btn.click(
+            end_code,
+            outputs=[code_blue_output, code_blue_status]
+        )
         
         # Footer
         gr.Markdown("""
