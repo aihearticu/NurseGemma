@@ -227,6 +227,19 @@ class CodeBlueAgent:
         
         # Code status
         "code called": "code_start",
+        "code blue team": "team_arrives",
+        "team arrives": "team_arrives",
+        "team arrived": "team_arrives",
+        "code team": "team_arrives",
+        "rapid response": "rrt_arrives",
+        "rrt arrives": "rrt_arrives",
+        "anesthesia": "anesthesia_arrives",
+        "respiratory": "rt_arrives",
+        "rt arrives": "rt_arrives",
+        "pharmacy": "pharmacy_arrives",
+        "attending": "attending_arrives",
+        "doctor": "md_arrives",
+        "md arrives": "md_arrives",
         "time of death": "time_of_death",
         "code ended": "code_end",
         "stop code": "code_end",
@@ -424,6 +437,35 @@ class CodeBlueAgent:
             self.session.access_time = manual_time or datetime.now()
             event = self.add_event_with_time("ACCESS", "IO access established", manual_time)
             return f"🦴 [{event.format_run_time()}] **IO access** established{time_note}\n\n{'➡️ Give Epinephrine 1mg now!' if self.session.is_epi_due() else ''}"
+        
+        # === Team Arrivals ===
+        if action == "team_arrives":
+            event = self.add_event_with_time("TEAM", "Code Blue team arrived", manual_time)
+            return f"👥 [{event.format_run_time()}] **Code Blue Team arrived**{time_note}"
+        
+        if action == "rrt_arrives":
+            event = self.add_event_with_time("TEAM", "Rapid Response Team arrived", manual_time)
+            return f"👥 [{event.format_run_time()}] **RRT arrived**{time_note}"
+        
+        if action == "anesthesia_arrives":
+            event = self.add_event_with_time("TEAM", "Anesthesia arrived", manual_time)
+            return f"👨‍⚕️ [{event.format_run_time()}] **Anesthesia arrived**{time_note}"
+        
+        if action == "rt_arrives":
+            event = self.add_event_with_time("TEAM", "Respiratory Therapy arrived", manual_time)
+            return f"🫁 [{event.format_run_time()}] **RT arrived**{time_note}"
+        
+        if action == "pharmacy_arrives":
+            event = self.add_event_with_time("TEAM", "Pharmacy arrived", manual_time)
+            return f"💊 [{event.format_run_time()}] **Pharmacy arrived**{time_note}"
+        
+        if action == "attending_arrives":
+            event = self.add_event_with_time("TEAM", "Attending physician arrived", manual_time)
+            return f"👨‍⚕️ [{event.format_run_time()}] **Attending arrived**{time_note}"
+        
+        if action == "md_arrives":
+            event = self.add_event_with_time("TEAM", "Physician arrived", manual_time)
+            return f"👨‍⚕️ [{event.format_run_time()}] **MD arrived**{time_note}"
         
         # === Code End ===
         if action == "time_of_death":
