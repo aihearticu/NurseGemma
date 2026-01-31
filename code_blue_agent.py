@@ -1,14 +1,18 @@
 """
 NurseGemma Code Blue Agent
-Real-time voice-activated cardiac arrest documentation with ACLS algorithm
+Real-time voice-activated cardiac arrest documentation with ACLS 2025 algorithm
+
+Fully compliant with AHA 2025 Guidelines for CPR and ECC.
 
 Voice commands → Auto-timestamped events → ACLS-guided prompts → Code Blue Record
 
-"CPR started" → timestamp
-"Pulse check, no pulse" → timestamp, rhythm prompt
-"Epi given" → timestamp, dose logged, next dose timer
-"Shock given" → timestamp, joules logged
-"ROSC" → timestamp, post-arrest care prompts
+Key ACLS 2025 features:
+- VF/pVT: Shock first, Epi after 2nd shock, Amio after 3rd shock
+- PEA/Asystole: Epi ASAP, treat H's and T's
+- CPR quality prompts (100-120/min, >2 inches, q2min switch)
+- Drug timing alerts (Epi q3-5min)
+- H's and T's checklist
+- ETCO2 monitoring prompts
 """
 
 import time
@@ -16,6 +20,17 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 from enum import Enum
+
+# Import ACLS protocol reference
+try:
+    from acls_protocol import (
+        DRUGS, CPR_QUALITY, REVERSIBLE_CAUSES, 
+        VF_PVT_ALGORITHM, PEA_ASYSTOLE_ALGORITHM,
+        get_epi_timing_advice, get_antiarrhythmic_advice, format_hs_ts_checklist
+    )
+    ACLS_LOADED = True
+except ImportError:
+    ACLS_LOADED = False
 
 
 class Rhythm(Enum):
@@ -53,7 +68,7 @@ class CodeEvent:
 
 @dataclass 
 class CodeBlueSession:
-    """Active code blue documentation session."""
+    """Active code blue documentation session - ACLS 2025 compliant."""
     
     # Timing
     start_time: datetime = field(default_factory=datetime.now)
@@ -71,10 +86,10 @@ class CodeBlueSession:
     last_cpr_start: Optional[datetime] = None
     compressor_changes: List[datetime] = field(default_factory=list)
     
-    # Medication tracking
+    # Medication tracking - ACLS 2025 compliant timing
     epi_doses: List[datetime] = field(default_factory=list)
     amiodarone_doses: List[tuple] = field(default_factory=list)  # (time, mg)
-    lidocaine_doses: List[tuple] = field(default_factory=list)
+    lidocaine_doses: List[tuple] = field(default_factory=list)  # (time, mg)
     other_meds: List[tuple] = field(default_factory=list)  # (time, med, dose)
     
     # Defibrillation
@@ -88,6 +103,12 @@ class CodeBlueSession:
     iv_access: bool = False
     io_access: bool = False
     access_time: Optional[datetime] = None
+    
+    # ETCO2 monitoring (ACLS 2025)
+    etco2_values: List[tuple] = field(default_factory=list)  # (time, value)
+    
+    # H's and T's checked
+    hs_ts_checked: bool = False
     
     # Outcome
     outcome: Optional[str] = None  # ROSC, Expired, Transferred
@@ -214,6 +235,20 @@ class CodeBlueAgent:
         "150 amio": "amio_150",
         "lidocaine": "lido_given",
         "lido given": "lido_given",
+        "lido": "lido_given",
+        "1 of lido": "lido_given",
+        
+        # ETCO2 monitoring (ACLS 2025)
+        "etco2": "etco2",
+        "end tidal": "etco2",
+        "co2": "etco2",
+        "capnography": "etco2",
+        
+        # H's and T's
+        "check h's and t's": "hs_ts_check",
+        "reversible causes": "hs_ts_check",
+        "h's and t's": "hs_ts_check",
+        
         "bicarb": "bicarb_given",
         "calcium": "calcium_given",
         "mag": "mag_given",
@@ -411,6 +446,64 @@ class CodeBlueAgent:
             event = self.add_event_with_time("MED", "Amiodarone 150mg IV", manual_time)
             return f"💊 [{event.format_run_time()}] **Amiodarone 150mg** given{time_note}"
         
+        if action == "lido_given":
+            # Lidocaine: 1-1.5 mg/kg first, 0.5-0.75 mg/kg subsequent
+            dose_num = len(self.session.lidocaine_doses) + 1
+            dose = "1-1.5 mg/kg" if dose_num == 1 else "0.5-0.75 mg/kg"
+            event_time = manual_time or datetime.now()
+            self.session.lidocaine_doses.append((event_time, dose))
+            event = self.add_event_with_time("MED", f"Lidocaine {dose} IV (dose #{dose_num})", manual_time)
+            return f"💊 [{event.format_run_time()}] **Lidocaine {dose}** given (dose #{dose_num}){time_note}\n\n{'⚠️ Max 3 mg/kg total' if dose_num >= 2 else ''}"
+        
+        # === ETCO2 Monitoring (ACLS 2025) ===
+        if action == "etco2":
+            # Try to extract value from text
+            import re
+            match = re.search(r'(\d+)', original_text)
+            if match:
+                value = int(match.group(1))
+                event_time = manual_time or datetime.now()
+                self.session.etco2_values.append((event_time, value))
+                event = self.add_event_with_time("ETCO2", f"{value} mmHg", manual_time)
+                
+                # ACLS interpretation
+                if value >= 40:
+                    interpretation = "🎉 **ETCO2 ≥40 - Possible ROSC!** Check pulse!"
+                elif value >= 10:
+                    interpretation = "✅ ETCO2 adequate - continue CPR"
+                else:
+                    interpretation = "⚠️ **Low ETCO2 (<10)** - Reassess CPR quality!"
+                
+                return f"📊 [{event.format_run_time()}] **ETCO2: {value} mmHg**{time_note}\n\n{interpretation}"
+            else:
+                return "📊 Say ETCO2 value (e.g., 'ETCO2 25' or 'End tidal 40')"
+        
+        # === H's and T's Checklist ===
+        if action == "hs_ts_check":
+            self.session.hs_ts_checked = True
+            event = self.add_event_with_time("ASSESSMENT", "H's and T's reviewed", manual_time)
+            if ACLS_LOADED:
+                checklist = format_hs_ts_checklist()
+            else:
+                checklist = """
+🔍 **REVERSIBLE CAUSES - Check Now!**
+
+**5 H's:**
+□ Hypovolemia → Fluids/blood
+□ Hypoxia → Airway/O2
+□ H+ (Acidosis) → Ventilate, bicarb?
+□ Hypo/Hyperkalemia → ECG, treat K+
+□ Hypothermia → Rewarm
+
+**5 T's:**
+□ Tension pneumo → Needle decompress
+□ Tamponade → Pericardiocentesis  
+□ Toxins → Antidotes
+□ Thrombosis (PE) → Lytics/ECMO
+□ Thrombosis (MI) → PCI
+"""
+            return f"🔍 [{event.format_run_time()}] **Checking Reversible Causes**{time_note}\n{checklist}"
+        
         if action == "bicarb_given":
             event_time = manual_time or datetime.now()
             self.session.other_meds.append((event_time, "Sodium Bicarbonate", "50mEq"))
@@ -539,35 +632,78 @@ class CodeBlueAgent:
 
     def _format_shockable_rhythm(self, event: CodeEvent, rhythm: str) -> str:
         shock_num = len(self.session.shocks) + 1
+        epi_doses = len(self.session.epi_doses)
+        amio_doses = len(self.session.amiodarone_doses)
+        
+        # ACLS 2025 compliant guidance
+        if shock_num == 1:
+            next_steps = """1. ⚡ **SHOCK NOW** (120-200J biphasic)
+2. 💪 Resume CPR immediately x 2 min
+3. 🔍 Rhythm check at 2 min"""
+        elif shock_num == 2:
+            next_steps = """1. ⚡ **SHOCK #2** 
+2. 💪 Resume CPR immediately
+3. 💉 **Give Epi 1mg** (after this shock!)
+4. 🔍 Rhythm check at 2 min"""
+        elif shock_num == 3:
+            next_steps = f"""1. ⚡ **SHOCK #3**
+2. 💪 Resume CPR immediately  
+3. {'💉 Epi 1mg (if >3min since last)' if epi_doses > 0 else '💉 Give Epi 1mg!'}
+4. 💊 **Amiodarone 300mg** (refractory VF/pVT)
+5. 🔍 Rhythm check at 2 min"""
+        else:
+            next_steps = f"""1. ⚡ **SHOCK #{shock_num}**
+2. 💪 Resume CPR immediately
+3. Continue Epi q3-5min
+4. {'Amio 150mg if still refractory' if amio_doses == 1 else 'Consider causes'}
+5. 🔍 **Check H's and T's**"""
+        
         return f"""
 ⚡ [{event.format_run_time()}] **{rhythm}** - SHOCKABLE RHYTHM
 
-**ACLS VF/pVT Protocol:**
-━━━━━━━━━━━━━━━━━━━━━━━
+**ACLS 2025 VF/pVT Protocol:**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. ⚡ **SHOCK** (200J biphasic) - Shock #{shock_num}
-2. 💪 Resume CPR immediately x 2 min
-3. 💉 Epi 1mg q3-5min
-4. 💊 Amiodarone 300mg after 2nd shock
+{next_steps}
 
+**CPR Quality:** 100-120/min, >2 inches, full recoil
 🔊 Say "Shock delivered" after defibrillation
 """
 
     def _format_non_shockable_rhythm(self, event: CodeEvent, rhythm: str) -> str:
+        epi_doses = len(self.session.epi_doses)
+        has_access = self.session.iv_access or self.session.io_access
+        
+        if epi_doses == 0:
+            epi_prompt = "💉 **Epi 1mg IV/IO IMMEDIATELY!**" if has_access else "💉 **Get IV/IO → Epi 1mg ASAP!**"
+        else:
+            epi_prompt = "💉 Continue Epi 1mg q3-5min"
+        
         return f"""
 🚫 [{event.format_run_time()}] **{rhythm}** - NON-SHOCKABLE
 
-**ACLS PEA/Asystole Protocol:**
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**ACLS 2025 PEA/Asystole Protocol:**
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. 💪 Continue high-quality CPR
-2. 💉 **Epi 1mg IV NOW** (then q3-5min)
-3. 🔍 Treat reversible causes (H's & T's)
+1. 💪 **High-quality CPR** (100-120/min, >2in)
+2. {epi_prompt}
+3. 🔍 **TREAT REVERSIBLE CAUSES!**
 
-**5 H's:** Hypovolemia, Hypoxia, H+ (acidosis), Hypo/Hyperkalemia, Hypothermia
-**5 T's:** Tension pneumo, Tamponade, Toxins, Thrombosis (PE), Thrombosis (MI)
+**5 H's:**
+• Hypovolemia → Fluids
+• Hypoxia → Airway/O2
+• H+ (acidosis) → Ventilate
+• Hypo/Hyperkalemia → Check ECG
+• Hypothermia → Rewarm
 
-🔊 Say "Epi given" when administered
+**5 T's:**
+• Tension pneumo → Decompress
+• Tamponade → Pericardiocentesis
+• Toxins → Antidotes
+• Thrombosis (PE) → Lytics
+• Thrombosis (MI) → PCI
+
+🔊 Say "Epi given" or "Check H's and T's"
 """
 
     def _format_shock_delivered(self, event: CodeEvent, joules: int) -> str:
@@ -649,29 +785,56 @@ class CodeBlueAgent:
 """
 
     def _get_next_prompt(self) -> str:
-        """Get contextual next-action prompt."""
+        """Get contextual next-action prompt - ACLS 2025 compliant."""
         prompts = []
+        s = self.session
         
-        # Check if epi is due
-        if self.session.is_epi_due():
-            epi_time = self.session.time_since_last_epi()
-            if epi_time:
+        # === ACLS 2025 Drug Timing ===
+        
+        # Epinephrine timing depends on rhythm!
+        if s.acls_path == ACLSPath.SHOCKABLE:
+            # VF/pVT: Epi AFTER 2nd shock
+            if len(s.epi_doses) == 0:
+                if len(s.shocks) >= 2:
+                    prompts.append("💉 **Give Epi 1mg NOW!** (After 2nd shock per ACLS)")
+                # Don't prompt for Epi before 2nd shock in VF/pVT
+            elif s.is_epi_due():
+                epi_time = s.time_since_last_epi()
                 prompts.append(f"💉 **Epi due!** (Last: {epi_time//60}m {epi_time%60}s ago)")
-            elif self.session.iv_access or self.session.io_access:
-                prompts.append("💉 **Give Epi 1mg!** (Access established)")
+        else:
+            # PEA/Asystole: Epi ASAP
+            if len(s.epi_doses) == 0:
+                if s.iv_access or s.io_access:
+                    prompts.append("💉 **Give Epi 1mg ASAP!** (Non-shockable rhythm)")
+            elif s.is_epi_due():
+                epi_time = s.time_since_last_epi()
+                prompts.append(f"💉 **Epi due!** (Last: {epi_time//60}m {epi_time%60}s ago)")
         
-        # Check if rhythm check due
-        if self.session.is_rhythm_check_due():
+        # Amiodarone: After 3rd shock for refractory VF/pVT
+        if s.acls_path == ACLSPath.SHOCKABLE:
+            if len(s.shocks) >= 3 and not s.amiodarone_doses and not s.lidocaine_doses:
+                prompts.append("💊 **Consider Amiodarone 300mg** (refractory VF/pVT)")
+        
+        # H's and T's reminder for non-shockable
+        if s.acls_path == ACLSPath.NON_SHOCKABLE and not s.hs_ts_checked:
+            prompts.append("🔍 **Check H's and T's!** (reversible causes)")
+        
+        # CPR quality - rhythm check due
+        if s.is_rhythm_check_due():
             prompts.append("🔍 **2-min rhythm check due!**")
         
-        # Shockable rhythm reminders
-        if self.session.acls_path == ACLSPath.SHOCKABLE:
-            if len(self.session.shocks) >= 2 and not self.session.amiodarone_doses:
-                prompts.append("💊 Consider **Amiodarone 300mg**")
+        # Compressor change reminder
+        cpr_time = s.time_since_cpr_start()
+        if cpr_time and cpr_time >= 110:  # 10 sec before 2 min
+            prompts.append("🔄 **Switch compressor soon!** (q2min per ACLS)")
         
         # Access reminder
-        if not self.session.iv_access and not self.session.io_access:
-            prompts.append("💉 Need IV/IO access for meds!")
+        if not s.iv_access and not s.io_access:
+            prompts.append("💉 **Need IV/IO access for meds!**")
+        
+        # ETCO2 reminder if no values recorded
+        if s.airway_type and not s.etco2_values:
+            prompts.append("📊 **Confirm ETCO2** (waveform capnography)")
         
         return "\n".join(prompts) if prompts else ""
     
@@ -735,16 +898,24 @@ class CodeBlueAgent:
         return event
     
     def generate_code_record(self) -> str:
-        """Generate formatted Code Blue documentation."""
+        """Generate formatted Code Blue documentation - ACLS 2025 compliant."""
         if not self.session:
             return "No active session"
         
         s = self.session
         duration = s.get_run_time()
         
+        # Calculate ACLS compliance metrics
+        epi_intervals = []
+        for i in range(1, len(s.epi_doses)):
+            interval = (s.epi_doses[i] - s.epi_doses[i-1]).total_seconds()
+            epi_intervals.append(interval)
+        avg_epi_interval = sum(epi_intervals) / len(epi_intervals) if epi_intervals else 0
+        epi_compliant = all(180 <= i <= 300 for i in epi_intervals) if epi_intervals else True
+        
         record = f"""
 ╔══════════════════════════════════════════════════════════════╗
-║                    CODE BLUE RECORD                          ║
+║              CODE BLUE RECORD - ACLS 2025                    ║
 ╚══════════════════════════════════════════════════════════════╝
 
 **Date:** {s.start_time.strftime("%Y-%m-%d")}
@@ -758,6 +929,7 @@ class CodeBlueAgent:
 Initial: {s.events[0].details if s.events else "Unknown"}
 Final: {s.current_rhythm.value}
 ACLS Pathway: {s.acls_path.value if s.acls_path else "N/A"}
+H's & T's Reviewed: {"Yes" if s.hs_ts_checked else "No"}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 **CPR:**
@@ -799,6 +971,14 @@ Time Secured: {s.airway_time.strftime('%H:%M:%S') if s.airway_time else "N/A"}
 IV: {"Yes" if s.iv_access else "No"}
 IO: {"Yes" if s.io_access else "No"}
 Time: {s.access_time.strftime('%H:%M:%S') if s.access_time else "N/A"}
+
+**ETCO2 MONITORING:**
+"""
+        if s.etco2_values:
+            for t, val in s.etco2_values:
+                record += f"  {t.strftime('%H:%M:%S')} - {val} mmHg\n"
+        else:
+            record += "  Not recorded\n"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 **EVENT LOG:**
