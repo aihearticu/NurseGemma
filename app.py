@@ -300,7 +300,7 @@ def transcribe_with_whisper(audio_path: str) -> str:
 # ============================================================================
 
 class OrchestratorAgent:
-    """Routes queries to appropriate specialist agents."""
+    """Routes queries to appropriate specialist agents - unified conversational interface."""
     
     def __init__(self, model):
         self.model = model
@@ -308,6 +308,22 @@ class OrchestratorAgent:
     def route(self, query: str, has_image: bool, has_multiple_images: bool = False, 
               has_audio: bool = False, has_lab_report: bool = False) -> dict:
         """Classify intent and determine routing."""
+        
+        # Check for Code Blue triggers FIRST (high priority emergency)
+        code_blue_triggers = [
+            "code blue", "code called", "cardiac arrest", "patient coding",
+            "patient down", "no pulse", "found unresponsive", "v-fib", "v-tach",
+            "asystole", "pea", "start cpr", "cpr started", "we have a code",
+            "calling a code", "need crash cart", "patient arrested"
+        ]
+        
+        query_lower = query.lower()
+        if any(trigger in query_lower for trigger in code_blue_triggers):
+            return {
+                "agent": "CODE_BLUE_AGENT",
+                "reason": "Emergency: Code Blue detected",
+                "nursing_focus": "Real-time cardiac arrest documentation with ACLS guidance"
+            }
         
         prompt = f"""You are the orchestrator for NurseGemma, a nursing-focused medical AI.
 
@@ -320,6 +336,7 @@ Has Audio Input: {has_audio}
 Appears to be Lab Report: {has_lab_report}
 
 Agents:
+- CODE_BLUE_AGENT: Cardiac arrest / code blue situations - voice-activated ACLS documentation
 - IMAGE_AGENT: Analyze single medical images (X-rays, CT slices, wounds)
 - LONGITUDINAL_AGENT: Compare multiple images over time (trending, progression)
 - VOLUMETRIC_AGENT: Analyze 3D CT/MRI volumes (multiple slices of same scan)
@@ -329,6 +346,7 @@ Agents:
 - ANATOMY_AGENT: Localize anatomical structures in chest X-rays
 
 Rules:
+- Code blue, cardiac arrest, CPR, coding → CODE_BLUE_AGENT
 - Multiple images + "compare" or "progression" or "trending" → LONGITUDINAL_AGENT
 - Multiple images + same scan type → VOLUMETRIC_AGENT
 - Image that looks like lab report → LAB_AGENT
@@ -952,27 +970,30 @@ def process_query(
     image2: Image.Image = None,
     image3: Image.Image = None,
     audio = None,
-    analysis_mode: str = "Auto-detect"
-) -> Tuple[str, str]:
+    chat_history: list = None
+) -> Tuple[str, str, list]:
     """
-    Process query through agentic pipeline.
+    Process query through agentic pipeline - unified conversational interface.
     
-    Returns: (response, routing_info)
+    Returns: (response, routing_info, updated_history)
     """
+    
+    if chat_history is None:
+        chat_history = []
     
     if not gemini_model:
-        return ("⚠️ Gemini API key not configured. Set GEMINI_API_KEY environment variable.", "")
+        return ("⚠️ Gemini API key not configured. Set GEMINI_API_KEY environment variable.", "", chat_history)
     
     # Handle voice input first
     if audio is not None:
         transcription = transcribe_medical_audio(audio)
         query = transcription
-        voice_note = f"\n🎤 **Voice Input Transcribed:** \"{transcription}\"\n\n---\n"
+        voice_note = f"🎤 *\"{transcription}\"*\n\n"
     else:
         voice_note = ""
     
     if not query.strip() and image is None:
-        return ("Please enter a question, upload an image, or use voice input.", "")
+        return ("Please enter a question, upload an image, or use voice input.", "", chat_history)
     
     # Collect all images
     images = [img for img in [image, image2, image3] if img is not None]
@@ -981,72 +1002,57 @@ def process_query(
     
     timestamp = datetime.now().strftime("%H:%M:%S")
     
-    # Manual mode override
-    if analysis_mode != "Auto-detect":
-        agent_name = {
-            "Single Image Analysis": "IMAGE_AGENT",
-            "Longitudinal Comparison": "LONGITUDINAL_AGENT",
-            "3D Volume Analysis": "VOLUMETRIC_AGENT",
-            "Lab Report Extraction": "LAB_AGENT",
-            "Anatomical Localization": "ANATOMY_AGENT",
-            "Clinical Q&A": "CLINICAL_AGENT",
-            "Evidence Search": "EVIDENCE_AGENT"
-        }.get(analysis_mode, "CLINICAL_AGENT")
-        routing = {
-            "agent": agent_name,
-            "reason": f"Manual mode: {analysis_mode}",
-            "nursing_focus": "User-selected analysis type"
-        }
-    else:
-        # Auto-detect with orchestrator
-        routing = orchestrator.route(query, has_image, has_multiple_images)
-    
+    # Auto-detect with orchestrator (always)
+    routing = orchestrator.route(query, has_image, has_multiple_images)
     agent_name = routing.get("agent", "CLINICAL_AGENT")
     
-    routing_info = f"""{voice_note}### 🧠 Orchestrator Decision ({timestamp})
-
-**Routed to:** `{agent_name}`  
-**Reason:** {routing.get('reason', 'N/A')}  
-**Nursing Focus:** {routing.get('nursing_focus', 'N/A')}
-
----
+    routing_info = f"""{voice_note}### 🧠 Orchestrator ({timestamp})
+**→ {agent_name}** | {routing.get('reason', '')}
 """
     
     # Execute appropriate agent
-    if agent_name == "LONGITUDINAL_AGENT" and has_multiple_images:
+    if agent_name == "CODE_BLUE_AGENT":
+        # Route to Code Blue Agent for real-time ACLS documentation
+        response = code_blue_agent.process_voice(query)
+        routing_info += "🚨 **Code Blue Mode Active** - Voice commands ready"
+        
+    elif agent_name == "LONGITUDINAL_AGENT" and has_multiple_images:
         response = longitudinal_agent.compare(images, query)
-        routing_info += f"**Agent:** Longitudinal Comparison ({len(images)} images)"
+        routing_info += f"📊 Longitudinal Comparison ({len(images)} images)"
         
     elif agent_name == "VOLUMETRIC_AGENT" and has_multiple_images:
         modality = "CT" if "ct" in query.lower() else "MRI" if "mri" in query.lower() else "CT/MRI"
         response = volumetric_agent.analyze_volume(images, modality, query)
-        routing_info += f"**Agent:** 3D Volume Analysis ({len(images)} slices)"
+        routing_info += f"🧊 3D Volume Analysis ({len(images)} slices)"
         
     elif agent_name == "LAB_AGENT" and has_image:
         response = lab_agent.extract_and_interpret(images[0], query)
-        routing_info += "**Agent:** Lab Report Extraction"
+        routing_info += "🔬 Lab Report Extraction"
         
     elif agent_name == "ANATOMY_AGENT" and has_image:
         response = anatomy_agent.localize(images[0], query)
-        routing_info += "**Agent:** Anatomical Localization"
+        routing_info += "🗺️ Anatomical Localization"
         
     elif agent_name == "IMAGE_AGENT" and has_image:
         response = image_agent.analyze(images[0], query)
-        routing_info += f"**Agent:** Image Analysis ({'MedGemma 1.5' if medgemma_available else 'Gemini'})"
+        routing_info += f"🖼️ Image Analysis ({'MedGemma 1.5' if medgemma_available else 'Gemini'})"
         
     elif agent_name == "EVIDENCE_AGENT":
         response = evidence_agent.search(query)
-        routing_info += "**Agent:** Evidence-Based Practice Search"
+        routing_info += "📚 Evidence-Based Practice"
         
     else:
         response = clinical_agent.answer(query)
-        routing_info += "**Agent:** Clinical Q&A"
+        routing_info += "💊 Clinical Q&A"
     
-    # Add model badge
-    model_badge = "🟢 MedGemma 1.5" if medgemma_available else "🟡 Gemini"
-    routing_info += f"\n**Model:** {model_badge}"
+    # Update chat history
+    user_msg = query
+    if has_image:
+        user_msg += f" [+{len(images)} image(s)]"
+    chat_history.append({"role": "user", "content": user_msg})
+    chat_history.append({"role": "assistant", "content": response})
     
-    return (response, routing_info)
+    return (response, routing_info, chat_history)
 
 
 def load_sample_image(sample_key: str) -> Image.Image:
@@ -1065,7 +1071,7 @@ def load_sample_image(sample_key: str) -> Image.Image:
 # ============================================================================
 
 def create_ui():
-    """Build the Gradio interface."""
+    """Build the Gradio interface - Unified Chat Experience."""
     
     # Check for models at startup
     mg_available = init_medgemma()
@@ -1075,285 +1081,164 @@ def create_ui():
         title="NurseGemma - Agentic Medical AI",
         theme=gr.themes.Soft(),
         css="""
-        .sample-btn { margin: 2px !important; }
-        .agent-box { background: #f0f7ff; padding: 10px; border-radius: 8px; }
-        .new-feature { background: #e8f5e9; padding: 5px 10px; border-radius: 4px; font-size: 0.9em; }
+        .chat-container { min-height: 400px; }
+        .agent-badge { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 4px 12px; border-radius: 20px; 
+            font-size: 0.85em; display: inline-block; margin: 2px;
+        }
+        .code-blue-active { 
+            background: linear-gradient(135deg, #f5365c 0%, #f56036 100%) !important;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
         """
     ) as demo:
+        
+        # State
+        chat_state = gr.State([])
         
         # Header
         gr.Markdown("""
 # 🩺 NurseGemma
-## Agentic Medical AI for Nursing Practice
+### Your AI Nursing Companion - Just Talk to Me
 
-**Architecture:** Gemini Orchestrator → Specialized MedGemma 1.5 Agents
-
-*Built by a nurse, for nurses | MedGemma Impact Challenge 2026*
-
----
-
-### 🆕 New MedGemma 1.5 Features
+*Ask clinical questions • Upload images • Say "Code Blue" for ACLS mode • Voice input supported*
 """)
         
-        # Feature badges
-        with gr.Row():
-            gr.Markdown("🎤 **MedASR Voice Input** - Hands-free dictation", elem_classes="new-feature")
-            gr.Markdown("📊 **Longitudinal Comparison** - Track progression", elem_classes="new-feature")
-            gr.Markdown("🚨 **Code Blue Mode** - Voice-activated ACLS", elem_classes="new-feature")
-            gr.Markdown("🔬 **Lab Extraction** - Structured data", elem_classes="new-feature")
+        # Status bar
+        status_parts = []
+        if gpu_backend and gpu_backend.available:
+            status_parts.append("🟢 4090 GPU")
+        status_parts.append("🟢 MedGemma 1.5" if mg_available else "🟡 Gemini")
+        status_parts.append("🎤 Voice" if asr_available else "🎤 Whisper")
+        gr.Markdown(f"**Status:** {' • '.join(status_parts)}")
         
         gr.Markdown("---")
         
-        # Status banner
-        statuses = []
-        if gpu_backend and gpu_backend.available:
-            statuses.append("🟢 GPU Backend (4090)")
-        statuses.append("🟢 MedGemma 1.5" if mg_available else "🟡 MedGemma (GPU required)")
-        statuses.append("🟢 MedASR" if asr_available else "🟡 MedASR (GPU required)")
-        statuses.append("🟢 Gemini" if gemini_model else "🔴 Gemini (API key needed)")
-        gr.Markdown(f"**Model Status:** {' | '.join(statuses)}")
-        
-        if gpu_backend and gpu_backend.available:
-            gr.Markdown("*🚀 Connected to remote RTX 4090 for real MedGemma 1.5 inference!*")
-        
         with gr.Row():
-            # Left: Input
-            with gr.Column(scale=1):
-                gr.Markdown("### 💬 Ask NurseGemma")
-                
-                # Analysis mode selector
-                analysis_mode = gr.Radio(
-                    choices=[
-                        "Auto-detect",
-                        "Single Image Analysis",
-                        "Longitudinal Comparison",
-                        "3D Volume Analysis", 
-                        "Lab Report Extraction",
-                        "Anatomical Localization",
-                        "Clinical Q&A",
-                        "Evidence Search"
-                    ],
-                    value="Auto-detect",
-                    label="Analysis Mode"
+            # Main chat column
+            with gr.Column(scale=2):
+                # Chat display
+                chatbot = gr.Chatbot(
+                    label="Chat with NurseGemma",
+                    height=450,
+                    type="messages",
+                    avatar_images=(None, "https://em-content.zobj.net/source/twitter/376/stethoscope_1fa7a.png"),
+                    elem_classes="chat-container"
                 )
                 
-                query_input = gr.Textbox(
-                    label="Your Question",
-                    placeholder="e.g., 'Compare these X-rays - is pneumonia improving?' or 'What are nursing considerations for Lasix?'",
-                    lines=3
-                )
+                # Input row
+                with gr.Row():
+                    query_input = gr.Textbox(
+                        placeholder="Ask anything... 'What's the nursing considerations for Lasix?' or 'Code Blue - patient down!'",
+                        show_label=False,
+                        scale=4,
+                        lines=1
+                    )
+                    submit_btn = gr.Button("Send", variant="primary", scale=1)
                 
-                # 🆕 Voice input
-                with gr.Accordion("🎤 Voice Input (MedASR)", open=False):
+                # Voice input
+                with gr.Row():
                     audio_input = gr.Audio(
                         sources=["microphone"],
                         type="filepath",
-                        label="Click to record (hands-free nursing mode)"
+                        label="🎤 Voice (click to record)",
+                        scale=3
                     )
-                    gr.Markdown("*82% fewer transcription errors than Whisper on medical speech!*")
+                    clear_btn = gr.Button("🗑️ Clear Chat", scale=1)
                 
-                # Image inputs for longitudinal/volumetric
-                with gr.Accordion("📷 Medical Images", open=True):
-                    image_input = gr.Image(type="pil", label="Image 1 (Primary)")
-                    
-                    with gr.Row():
-                        image_input2 = gr.Image(type="pil", label="Image 2 (Comparison/Slice)")
-                        image_input3 = gr.Image(type="pil", label="Image 3 (Comparison/Slice)")
-                    
-                    gr.Markdown("*Upload multiple images for longitudinal comparison or 3D volume analysis*")
-                    
-                    gr.Markdown("**Quick Test - Sample X-rays:**")
-                    with gr.Row():
-                        for key, info in SAMPLE_IMAGES.items():
-                            btn = gr.Button(info["label"], size="sm", elem_classes="sample-btn")
-                            btn.click(
-                                fn=lambda k=key: load_sample_image(k),
-                                outputs=image_input
-                            )
-                
-                submit_btn = gr.Button("🚀 Ask NurseGemma", variant="primary", size="lg")
+                # Routing info (collapsible)
+                with gr.Accordion("🧠 Agent Routing", open=False):
+                    routing_output = gr.Markdown("*Send a message to see routing*")
             
-            # Right: Output
+            # Side panel - images and quick actions
             with gr.Column(scale=1):
-                gr.Markdown("### 📋 Response")
-                response_output = gr.Markdown(label="Answer")
-                
-                with gr.Accordion("🔍 Agent Routing Details", open=True):
-                    routing_output = gr.Markdown(label="Routing", elem_classes="agent-box")
-        
-        # Examples organized by feature
-        gr.Markdown("---\n### 💡 Try These Examples")
-        
-        with gr.Tabs():
-            with gr.Tab("🖼️ Image Analysis"):
-                gr.Examples(
-                    examples=[
-                        ["Analyze this chest X-ray. What findings should I report?"],
-                        ["Is there evidence of pneumonia? What nursing assessments are indicated?"],
-                        ["Check tube and line positions on this X-ray"],
-                    ],
-                    inputs=[query_input],
-                )
-            
-            with gr.Tab("📊 Longitudinal (NEW)"):
-                gr.Examples(
-                    examples=[
-                        ["Compare these X-rays - is the pneumonia improving or worsening?"],
-                        ["Track the progression between admission and day 3 X-rays"],
-                        ["What changed between these two images? Update for handoff."],
-                    ],
-                    inputs=[query_input],
-                )
-            
-            with gr.Tab("🔬 Lab Reports (NEW)"):
-                gr.Examples(
-                    examples=[
-                        ["Extract all lab values from this report"],
-                        ["Which values are critical and need immediate reporting?"],
-                        ["Interpret these labs for a post-op cardiac patient"],
-                    ],
-                    inputs=[query_input],
-                )
-            
-            with gr.Tab("💊 Clinical Q&A"):
-                gr.Examples(
-                    examples=[
-                        ["What are the nursing considerations for a patient on Lasix?"],
-                        ["My patient's potassium is 3.1 mEq/L. What should I do?"],
-                        ["Interpret troponin trending: 0.04 → 0.15 → 0.38 over 6 hours"],
-                        ["Patient has new onset confusion and left-sided weakness. Priority assessment?"],
-                    ],
-                    inputs=[query_input],
-                )
-            
-            with gr.Tab("📚 Evidence"):
-                gr.Examples(
-                    examples=[
-                        ["What does the evidence say about prone positioning in ARDS?"],
-                        ["SCCM guidelines for early mobility in ICU"],
-                        ["Best practices for preventing CAUTI"],
-                    ],
-                    inputs=[query_input],
-                )
-        
-        # ========================================================================
-        # 🚨 CODE BLUE MODE - Voice-Activated ACLS Documentation
-        # ========================================================================
-        gr.Markdown("---")
-        gr.Markdown("## 🚨 Code Blue Mode")
-        gr.Markdown("*Voice-activated cardiac arrest documentation with ACLS algorithm guidance*")
-        
-        with gr.Row():
-            with gr.Column(scale=1):
-                gr.Markdown("### 🎤 Voice Commands")
-                
-                code_blue_audio = gr.Audio(
-                    sources=["microphone"],
-                    type="filepath",
-                    label="🔴 Click to speak (hands-free during code)"
-                )
-                
-                code_blue_text = gr.Textbox(
-                    label="Or type command",
-                    placeholder="CPR started, Epi given, V-fib, Shock delivered, ROSC...",
-                    lines=1
-                )
+                gr.Markdown("### 📷 Images")
+                image_input = gr.Image(type="pil", label="Upload X-ray, CT, wound, lab report...")
                 
                 with gr.Row():
-                    start_code_btn = gr.Button("🚨 Start Code Blue", variant="primary")
-                    end_code_btn = gr.Button("⏹️ End Code", variant="secondary")
+                    image_input2 = gr.Image(type="pil", label="Image 2", height=100)
+                    image_input3 = gr.Image(type="pil", label="Image 3", height=100)
                 
+                gr.Markdown("### ⚡ Quick Actions")
+                
+                # Sample images
+                gr.Markdown("**Load Sample:**")
+                with gr.Row():
+                    for key, info in SAMPLE_IMAGES.items():
+                        btn = gr.Button(info["label"], size="sm")
+                        btn.click(fn=lambda k=key: load_sample_image(k), outputs=image_input)
+                
+                gr.Markdown("---")
                 gr.Markdown("""
-**Voice Commands:**
-| Say This | Action |
-|----------|--------|
-| "CPR started" | Start CPR timer |
-| "V-fib" / "Asystole" / "PEA" | Log rhythm |
-| "Epi given" | Log epinephrine |
-| "Shock delivered" | Log defibrillation |
-| "ROSC" | Return of circulation |
-| "Switch" | Compressor change |
+**💡 Try saying:**
+- "There's a code blue!"
+- "Analyze this X-ray"
+- "Compare these images"
+- "Nursing considerations for Lasix"
+- "Evidence for prone positioning"
+- "CPR started 22:30"
 """)
-            
-            with gr.Column(scale=1):
-                gr.Markdown("### 📋 Code Blue Record")
-                code_blue_output = gr.Markdown(
-                    value="🎤 Say **'Code called'** or click **Start Code Blue** to begin documentation",
-                    label="Live Documentation"
-                )
-                code_blue_status = gr.Markdown(value="", label="Status")
         
-        # Code Blue processing function
-        def process_code_blue(audio_path, text_input):
-            """Process Code Blue voice/text input."""
-            # Get text from voice or text input
-            if audio_path:
-                text = transcribe_medical_audio(audio_path)
-            else:
-                text = text_input
-            
-            if not text or not text.strip():
-                return code_blue_agent.get_status() if code_blue_agent.session else "🎤 Waiting for input...", ""
-            
-            # Process through Code Blue agent
-            response = code_blue_agent.process_voice(text)
-            status = code_blue_agent.get_status() if code_blue_agent.session else ""
-            
-            return response, status
-        
-        def start_code():
-            """Start a new Code Blue session."""
-            return code_blue_agent.start_code(), code_blue_agent.get_status()
-        
-        def end_code():
-            """End Code Blue and generate record."""
-            if code_blue_agent.session:
-                response = code_blue_agent.process_voice("code ended")
-                return response, ""
-            return "No active code", ""
-        
-        # Wire up Code Blue
-        code_blue_audio.change(
-            process_code_blue,
-            inputs=[code_blue_audio, code_blue_text],
-            outputs=[code_blue_output, code_blue_status]
-        )
-        
-        code_blue_text.submit(
-            process_code_blue,
-            inputs=[code_blue_audio, code_blue_text],
-            outputs=[code_blue_output, code_blue_status]
-        )
-        
-        start_code_btn.click(
-            start_code,
-            outputs=[code_blue_output, code_blue_status]
-        )
-        
-        end_code_btn.click(
-            end_code,
-            outputs=[code_blue_output, code_blue_status]
-        )
+        # Agent capabilities
+        gr.Markdown("---")
+        with gr.Row():
+            gr.Markdown("🚨 **Code Blue** - ACLS", elem_classes="agent-badge")
+            gr.Markdown("🖼️ **Images** - X-ray/CT/MRI", elem_classes="agent-badge")
+            gr.Markdown("📊 **Longitudinal** - Compare", elem_classes="agent-badge")
+            gr.Markdown("🔬 **Labs** - Extract", elem_classes="agent-badge")
+            gr.Markdown("💊 **Clinical** - Q&A", elem_classes="agent-badge")
+            gr.Markdown("📚 **Evidence** - Guidelines", elem_classes="agent-badge")
         
         # Footer
         gr.Markdown("""
 ---
-⚠️ **Disclaimer:** NurseGemma is an educational tool. All outputs require verification by qualified healthcare professionals. Not for diagnostic or treatment decisions.
+⚠️ **Educational tool only.** Verify all outputs with qualified healthcare professionals.
 
-*Powered by MedGemma 1.5 + MedASR + Gemini | [GitHub](https://github.com/AIHeartICU/NurseGemma)*
+*MedGemma 1.5 + MedASR + Gemini | [GitHub](https://github.com/AIHeartICU/NurseGemma)*
 """)
         
-        # Wire up
+        # Chat processing function
+        def chat_respond(message, history, image1, image2, image3, audio):
+            """Process chat message and update history."""
+            if not message and not audio and not image1:
+                return history, "", None, ""
+            
+            response, routing, new_history = process_query(
+                message, image1, image2, image3, audio, history
+            )
+            
+            return new_history, "", None, routing
+        
+        def clear_chat():
+            """Clear chat history and reset Code Blue."""
+            if code_blue_agent.session:
+                code_blue_agent.session = None
+            return [], ""
+        
+        # Wire up chat
         submit_btn.click(
-            process_query,
-            inputs=[query_input, image_input, image_input2, image_input3, audio_input, analysis_mode],
-            outputs=[response_output, routing_output]
+            chat_respond,
+            inputs=[query_input, chatbot, image_input, image_input2, image_input3, audio_input],
+            outputs=[chatbot, query_input, audio_input, routing_output]
         )
         
         query_input.submit(
-            process_query,
-            inputs=[query_input, image_input, image_input2, image_input3, audio_input, analysis_mode],
-            outputs=[response_output, routing_output]
+            chat_respond,
+            inputs=[query_input, chatbot, image_input, image_input2, image_input3, audio_input],
+            outputs=[chatbot, query_input, audio_input, routing_output]
+        )
+        
+        audio_input.change(
+            chat_respond,
+            inputs=[query_input, chatbot, image_input, image_input2, image_input3, audio_input],
+            outputs=[chatbot, query_input, audio_input, routing_output]
+        )
+        
+        clear_btn.click(
+            clear_chat,
+            outputs=[chatbot, routing_output]
         )
     
     return demo
