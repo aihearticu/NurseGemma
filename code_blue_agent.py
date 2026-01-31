@@ -17,7 +17,7 @@ Key ACLS 2025 features:
 
 import time
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -112,6 +112,33 @@ class CodeBlueSession:
     
     # Outcome
     outcome: Optional[str] = None  # ROSC, Expired, Transferred
+    
+    # === NEW: Real-World Code Blue Requirements ===
+    
+    # Team roles (Joint Commission requirement)
+    team_roles: Dict[str, str] = field(default_factory=dict)  # role -> name
+    
+    # Provider notifications
+    notifications: List[tuple] = field(default_factory=list)  # (time, who, method)
+    
+    # Equipment details
+    defib_type: Optional[str] = None  # biphasic/monophasic
+    iv_details: Optional[str] = None  # site, gauge
+    
+    # Quality metrics
+    time_to_first_shock: Optional[int] = None  # seconds from code start
+    time_to_first_epi: Optional[int] = None  # seconds from code start
+    
+    # Post-ROSC care tracking
+    post_rosc_checklist: Dict[str, bool] = field(default_factory=lambda: {
+        "12_lead_ecg": False,
+        "target_map_65": False,
+        "target_spo2_94_98": False,
+        "check_glucose": False,
+        "consider_cath_lab": False,
+        "consider_ttm": False,
+        "notify_icu": False
+    })
     
     def get_run_time(self) -> int:
         """Get seconds since code started."""
@@ -248,6 +275,41 @@ class CodeBlueAgent:
         "check h's and t's": "hs_ts_check",
         "reversible causes": "hs_ts_check",
         "h's and t's": "hs_ts_check",
+        
+        # === Team Roles (Real-World Documentation) ===
+        "team leader": "team_leader",
+        "code leader": "team_leader",
+        "running the code": "team_leader",
+        "recorder": "recorder_role",
+        "documenting": "recorder_role",
+        "compressor": "compressor_role",
+        "doing compressions": "compressor_role",
+        "airway": "airway_role",
+        "bagging": "airway_role",
+        "rt": "airway_role",
+        "medications": "meds_role",
+        "pushing meds": "meds_role",
+        "med nurse": "meds_role",
+        
+        # === Provider Notifications ===
+        "notified": "notification",
+        "called": "notification", 
+        "paged": "notification",
+        "attending notified": "notification",
+        
+        # === Post-ROSC Care ===
+        "post rosc": "post_rosc",
+        "12 lead": "post_rosc_ecg",
+        "ecg": "post_rosc_ecg",
+        "map": "post_rosc_map",
+        "blood pressure": "post_rosc_map",
+        "glucose": "post_rosc_glucose",
+        "blood sugar": "post_rosc_glucose",
+        "cath lab": "post_rosc_cath",
+        "pci": "post_rosc_cath",
+        "cooling": "post_rosc_ttm",
+        "ttm": "post_rosc_ttm",
+        "temperature": "post_rosc_ttm",
         
         "bicarb": "bicarb_given",
         "calcium": "calcium_given",
@@ -418,6 +480,11 @@ class CodeBlueAgent:
             joules = self._extract_joules(original_text) or 200
             event_time = manual_time or datetime.now()
             self.session.shocks.append((event_time, joules))
+            
+            # Track time to first shock (quality metric)
+            if len(self.session.shocks) == 1:
+                self.session.time_to_first_shock = (event_time - self.session.start_time).total_seconds()
+            
             event = self.add_event_with_time("SHOCK", f"{joules}J delivered", manual_time)
             return self._format_shock_delivered(event, joules) + time_note
         
@@ -430,6 +497,10 @@ class CodeBlueAgent:
             event_time = manual_time or datetime.now()
             self.session.epi_doses.append(event_time)
             dose_num = len(self.session.epi_doses)
+            
+            # Track time to first epi (quality metric)
+            if dose_num == 1:
+                self.session.time_to_first_epi = int((event_time - self.session.start_time).total_seconds())
             event = self.add_event_with_time("MED", f"Epinephrine 1mg IV (dose #{dose_num})", manual_time)
             return self._format_epi_given(event, dose_num) + time_note
         
@@ -516,6 +587,93 @@ class CodeBlueAgent:
 □ Thrombosis (MI) → PCI
 """
             return f"🔍 [{event.format_run_time()}] **Checking Reversible Causes**{time_note}\n{checklist}"
+        
+        # === Team Role Documentation ===
+        if action == "team_leader":
+            # Extract name if provided (handle "Dr Smith" or "leader: Smith")
+            import re
+            # First remove any time patterns
+            clean_text = re.sub(r'\d{1,2}:\d{2}(:\d{2})?', '', original_text)
+            # Look for name after leader/running
+            match = re.search(r'(?:leader|running)[:\s]+(.+?)(?:\s*$)', clean_text, re.IGNORECASE)
+            name = match.group(1).strip().title() if match else "Identified"
+            self.session.team_roles["team_leader"] = name
+            event = self.add_event_with_time("TEAM", f"Team Leader: {name}", manual_time)
+            return f"👨‍⚕️ [{event.format_run_time()}] **Team Leader: {name}**{time_note}\n\n📢 Clear communication established"
+        
+        if action == "recorder_role":
+            import re
+            match = re.search(r'(?:recorder|documenting)[:\s]+(\w+)', original_text.lower())
+            name = match.group(1).title() if match else "Identified"
+            self.session.team_roles["recorder"] = name
+            event = self.add_event_with_time("TEAM", f"Recorder: {name}", manual_time)
+            return f"📝 [{event.format_run_time()}] **Recorder: {name}**{time_note}"
+        
+        if action == "compressor_role":
+            import re
+            match = re.search(r'(?:compressor|compressions)[:\s]+(\w+)', original_text.lower())
+            name = match.group(1).title() if match else "Identified"
+            self.session.team_roles["compressor"] = name
+            event = self.add_event_with_time("TEAM", f"Compressor: {name}", manual_time)
+            return f"💪 [{event.format_run_time()}] **Compressor: {name}**{time_note}\n\n🔄 Switch q2 minutes"
+        
+        if action == "airway_role":
+            import re
+            match = re.search(r'(?:airway|bagging|rt)[:\s]+(\w+)', original_text.lower())
+            name = match.group(1).title() if match else "RT/Identified"
+            self.session.team_roles["airway"] = name
+            event = self.add_event_with_time("TEAM", f"Airway: {name}", manual_time)
+            return f"🫁 [{event.format_run_time()}] **Airway: {name}**{time_note}"
+        
+        if action == "meds_role":
+            import re
+            match = re.search(r'(?:medications|meds|pushing)[:\s]+(\w+)', original_text.lower())
+            name = match.group(1).title() if match else "Identified"
+            self.session.team_roles["meds"] = name
+            event = self.add_event_with_time("TEAM", f"Medications: {name}", manual_time)
+            return f"💊 [{event.format_run_time()}] **Medication Nurse: {name}**{time_note}"
+        
+        # === Provider Notifications ===
+        if action == "notification":
+            import re
+            # First remove any time patterns to avoid matching them
+            clean_text = re.sub(r'\d{1,2}:\d{2}(:\d{2})?', '', original_text)
+            # Try to extract who was notified
+            match = re.search(r'(?:notified|called|paged)\s+(.+?)(?:\s*$)', clean_text, re.IGNORECASE)
+            who = match.group(1).strip().title() if match else "Provider"
+            event_time = manual_time or datetime.now()
+            self.session.notifications.append((event_time, who, "notified"))
+            event = self.add_event_with_time("NOTIFICATION", f"{who} notified", manual_time)
+            return f"📞 [{event.format_run_time()}] **{who} notified**{time_note}"
+        
+        # === Post-ROSC Care ===
+        if action == "post_rosc":
+            return self._show_post_rosc_checklist()
+        
+        if action == "post_rosc_ecg":
+            self.session.post_rosc_checklist["12_lead_ecg"] = True
+            event = self.add_event_with_time("POST-ROSC", "12-lead ECG obtained", manual_time)
+            return f"📊 [{event.format_run_time()}] **12-lead ECG obtained**{time_note}\n\n🔍 Check for STEMI/ischemia"
+        
+        if action == "post_rosc_map":
+            self.session.post_rosc_checklist["target_map_65"] = True
+            event = self.add_event_with_time("POST-ROSC", "Hemodynamics assessed", manual_time)
+            return f"💓 [{event.format_run_time()}] **Hemodynamics assessed**{time_note}\n\n🎯 Target: MAP ≥65 mmHg"
+        
+        if action == "post_rosc_glucose":
+            self.session.post_rosc_checklist["check_glucose"] = True
+            event = self.add_event_with_time("POST-ROSC", "Glucose checked", manual_time)
+            return f"🩸 [{event.format_run_time()}] **Glucose checked**{time_note}\n\n⚠️ Avoid hypoglycemia"
+        
+        if action == "post_rosc_cath":
+            self.session.post_rosc_checklist["consider_cath_lab"] = True
+            event = self.add_event_with_time("POST-ROSC", "Cath lab consideration", manual_time)
+            return f"🏥 [{event.format_run_time()}] **Cath lab considered**{time_note}\n\n💡 Emergent PCI if STEMI/cardiogenic shock"
+        
+        if action == "post_rosc_ttm":
+            self.session.post_rosc_checklist["consider_ttm"] = True
+            event = self.add_event_with_time("POST-ROSC", "TTM initiated", manual_time)
+            return f"🧊 [{event.format_run_time()}] **TTM/Temperature management**{time_note}\n\n🎯 Target: 32-36°C for comatose patients"
         
         if action == "bicarb_given":
             event_time = manual_time or datetime.now()
@@ -910,6 +1068,42 @@ class CodeBlueAgent:
         self.session.events.append(event)
         return event
     
+    def _show_post_rosc_checklist(self) -> str:
+        """Show Post-ROSC care checklist per AHA 2025."""
+        if not self.session:
+            return "No active session"
+        
+        c = self.session.post_rosc_checklist
+        
+        checklist = """
+🎉 **POST-ROSC CARE CHECKLIST** (AHA 2025)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+**IMMEDIATE (0-20 min):**
+"""
+        checklist += f"{'✅' if c['12_lead_ecg'] else '☐'} 12-lead ECG (check for STEMI)\n"
+        checklist += f"{'✅' if c['target_map_65'] else '☐'} Hemodynamics: MAP ≥65 mmHg\n"
+        checklist += f"{'✅' if c['target_spo2_94_98'] else '☐'} Oxygenation: SpO2 94-98%\n"
+        checklist += f"{'✅' if c['check_glucose'] else '☐'} Check glucose (avoid hypoglycemia)\n"
+        
+        checklist += """
+**CONSIDER:**
+"""
+        checklist += f"{'✅' if c['consider_cath_lab'] else '☐'} Cath lab if STEMI/shock/recurrent VT\n"
+        checklist += f"{'✅' if c['consider_ttm'] else '☐'} TTM 32-36°C if comatose\n"
+        checklist += f"{'✅' if c['notify_icu'] else '☐'} ICU notification\n"
+        
+        checklist += """
+**KEY TARGETS:**
+• MAP ≥65 mmHg (vasopressors PRN)
+• SpO2 94-98% (wean FiO2)
+• PaCO2 35-45 mmHg (avoid hyperventilation)
+• Avoid fever (temp >37.7°C)
+
+🔊 Say items to check them off (e.g., "12-lead done")
+"""
+        return checklist
+    
     def generate_code_record(self) -> str:
         """Generate formatted Code Blue documentation - ACLS 2025 compliant."""
         if not self.session:
@@ -943,6 +1137,37 @@ Initial: {s.events[0].details if s.events else "Unknown"}
 Final: {s.current_rhythm.value}
 ACLS Pathway: {s.acls_path.value if s.acls_path else "N/A"}
 H's & T's Reviewed: {"Yes" if s.hs_ts_checked else "No"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**TEAM ROLES:**"""
+        
+        if s.team_roles:
+            for role, name in s.team_roles.items():
+                record += f"\n{role.replace('_', ' ').title()}: {name}"
+        else:
+            record += "\nNot documented"
+        
+        record += f"""
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**NOTIFICATIONS:**"""
+        
+        if s.notifications:
+            for t, who, method in s.notifications:
+                record += f"\n{t.strftime('%H:%M:%S')} - {who} ({method})"
+        else:
+            record += "\nNone documented"
+        
+        record += f"""
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+**QUALITY METRICS:**
+Time to first shock: {f"{s.time_to_first_shock}s" if s.time_to_first_shock else "N/A"}
+Time to first Epi: {f"{s.time_to_first_epi}s" if s.time_to_first_epi else "N/A"}
+Total shocks: {len(s.shocks)}
+Total Epi doses: {len(s.epi_doses)}
+CPR cycles: {s.cpr_cycles}
+Compressor switches: {len(s.compressor_changes)}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 **CPR:**

@@ -183,5 +183,85 @@ class TestCodeRecord:
         assert "ETCO2" in record
 
 
+class TestTeamRoles:
+    """Test team role documentation."""
+    
+    def test_team_leader_tracking(self):
+        agent = CodeBlueAgent()
+        agent.start_code()
+        
+        result = agent.process_voice("Team leader: Dr Smith")
+        assert "Team Leader" in result
+        assert "team_leader" in agent.session.team_roles
+    
+    def test_multiple_roles(self):
+        agent = CodeBlueAgent()
+        agent.start_code()
+        
+        agent.process_voice("Recorder: Sarah")
+        agent.process_voice("Compressor: Mike")
+        agent.process_voice("Airway: RT Lisa")
+        
+        assert len(agent.session.team_roles) == 3
+
+
+class TestProviderNotifications:
+    """Test provider notification tracking."""
+    
+    def test_notification_logging(self):
+        agent = CodeBlueAgent()
+        agent.start_code()
+        
+        result = agent.process_voice("Notified attending")
+        assert "notified" in result.lower()
+        assert len(agent.session.notifications) == 1
+
+
+class TestQualityMetrics:
+    """Test quality metric tracking."""
+    
+    def test_time_to_first_shock(self):
+        agent = CodeBlueAgent()
+        agent.start_code()
+        agent.process_voice("V-fib")
+        agent.process_voice("Shock delivered 200J")
+        
+        assert agent.session.time_to_first_shock is not None
+        assert agent.session.time_to_first_shock >= 0
+    
+    def test_time_to_first_epi(self):
+        agent = CodeBlueAgent()
+        agent.start_code()
+        agent.process_voice("PEA")
+        agent.process_voice("IV access")
+        agent.process_voice("Epi given")
+        
+        assert agent.session.time_to_first_epi is not None
+
+
+class TestPostROSCCare:
+    """Test post-ROSC care tracking."""
+    
+    def test_post_rosc_checklist_display(self):
+        agent = CodeBlueAgent()
+        agent.start_code()
+        
+        # ROSC displays post-cardiac arrest care guidance
+        result = agent.process_voice("ROSC")
+        assert "POST-CARDIAC ARREST" in result or "Airway" in result
+        assert "ECG" in result or "cath lab" in result
+    
+    def test_post_rosc_items(self):
+        agent = CodeBlueAgent()
+        agent.start_code()
+        agent.process_voice("ROSC")
+        
+        agent.process_voice("12 lead done")
+        assert agent.session.post_rosc_checklist["12_lead_ecg"]
+        
+        agent.process_voice("TTM initiated")
+        assert agent.session.post_rosc_checklist["consider_ttm"]
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
