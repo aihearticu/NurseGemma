@@ -169,14 +169,22 @@ class CodeBlueAgent:
         
         # Rhythms
         "v fib": "rhythm_vf",
+        "v-fib": "rhythm_vf",
+        "vfib": "rhythm_vf",
         "vf": "rhythm_vf",
         "ventricular fibrillation": "rhythm_vf",
         "v tach": "rhythm_vt",
+        "v-tach": "rhythm_vt",
+        "vtach": "rhythm_vt",
         "vt": "rhythm_vt",
         "pulseless vt": "rhythm_vt",
+        "pulseless v-tach": "rhythm_vt",
         "pea": "rhythm_pea",
+        "p.e.a": "rhythm_pea",
+        "pulseless electrical": "rhythm_pea",
         "asystole": "rhythm_asystole",
         "flatline": "rhythm_asystole",
+        "flat line": "rhythm_asystole",
         
         # Defibrillation
         "shock advised": "shock_advised",
