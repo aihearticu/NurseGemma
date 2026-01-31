@@ -88,6 +88,32 @@ NurseGemma bridges this gap with AI that understands nursing workflows.
 
 ## ✨ Features
 
+### 🚨 Code Blue Agent - ACLS 2025 Compliant
+
+Real-time voice-activated cardiac arrest documentation with automatic timestamping and ACLS algorithm guidance.
+
+**Voice Commands:**
+```
+"Code called"          → Start documentation
+"CPR started"          → Log CPR cycle
+"V-fib"                → Identify shockable rhythm
+"Shock delivered 200J" → Log defibrillation
+"Epi given"            → Log epinephrine + timer
+"ETCO2 25"             → Log capnography
+"Check H's and T's"    → Reversible causes checklist
+"ROSC"                 → Log outcome
+```
+
+**ACLS 2025 Compliance:**
+| Protocol | Guidance |
+|----------|----------|
+| VF/pVT | Epi AFTER 2nd shock, Amio after 3rd |
+| PEA/Asystole | Epi ASAP, treat H's and T's |
+| Monitoring | ETCO2 alerts, Epi timing (q3-5min) |
+| CPR Quality | Compressor switch reminders (q2min) |
+
+---
+
 ### 1. 🎤 Voice Input (MedASR) - NEW!
 Hands-free nursing mode. Dictate your questions while providing patient care.
 
