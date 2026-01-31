@@ -282,148 +282,161 @@ class CodeBlueAgent:
     def _execute_action(self, action: str, original_text: str) -> str:
         """Execute recognized action and return formatted response."""
         
+        # Check for manual timestamp in the text
+        manual_time = self._extract_time(original_text)
+        time_note = f" *(manual: {manual_time.strftime('%H:%M:%S')})*" if manual_time else ""
+        
         # === CPR ===
         if action == "start_cpr":
-            self.session.last_cpr_start = datetime.now()
+            event_time = manual_time or datetime.now()
+            self.session.last_cpr_start = event_time
             self.session.cpr_cycles += 1
-            event = self.session.add_event("CPR_START", f"Cycle {self.session.cpr_cycles}")
-            return self._format_cpr_start(event)
+            event = self.add_event_with_time("CPR_START", f"Cycle {self.session.cpr_cycles}", manual_time)
+            return self._format_cpr_start(event) + time_note
         
         if action == "switch_compressor":
-            self.session.compressor_changes.append(datetime.now())
-            event = self.session.add_event("COMPRESSOR_SWITCH", "")
-            return f"🔄 [{event.format_run_time()}] **Compressor switched** - Good teamwork!"
+            event_time = manual_time or datetime.now()
+            self.session.compressor_changes.append(event_time)
+            event = self.add_event_with_time("COMPRESSOR_SWITCH", "", manual_time)
+            return f"🔄 [{event.format_run_time()}] **Compressor switched** - Good teamwork!{time_note}"
         
         # === Rhythm ===
         if action == "pulse_check" or action == "rhythm_check":
-            event = self.session.add_event("RHYTHM_CHECK", "")
-            return self._format_rhythm_check(event)
+            event = self.add_event_with_time("RHYTHM_CHECK", "", manual_time)
+            return self._format_rhythm_check(event) + time_note
         
         if action == "rhythm_vf":
             self.session.current_rhythm = Rhythm.VF
             self.session.acls_path = ACLSPath.SHOCKABLE
-            event = self.session.add_event("RHYTHM", "VF identified")
-            return self._format_shockable_rhythm(event, "V-FIB")
+            event = self.add_event_with_time("RHYTHM", "VF identified", manual_time)
+            return self._format_shockable_rhythm(event, "V-FIB") + time_note
         
         if action == "rhythm_vt":
             self.session.current_rhythm = Rhythm.VT
             self.session.acls_path = ACLSPath.SHOCKABLE
-            event = self.session.add_event("RHYTHM", "Pulseless VT identified")
-            return self._format_shockable_rhythm(event, "Pulseless V-TACH")
+            event = self.add_event_with_time("RHYTHM", "Pulseless VT identified", manual_time)
+            return self._format_shockable_rhythm(event, "Pulseless V-TACH") + time_note
         
         if action == "rhythm_pea":
             self.session.current_rhythm = Rhythm.PEA
             self.session.acls_path = ACLSPath.NON_SHOCKABLE
-            event = self.session.add_event("RHYTHM", "PEA identified")
-            return self._format_non_shockable_rhythm(event, "PEA")
+            event = self.add_event_with_time("RHYTHM", "PEA identified", manual_time)
+            return self._format_non_shockable_rhythm(event, "PEA") + time_note
         
         if action == "rhythm_asystole":
             self.session.current_rhythm = Rhythm.ASYSTOLE
             self.session.acls_path = ACLSPath.NON_SHOCKABLE
-            event = self.session.add_event("RHYTHM", "Asystole")
-            return self._format_non_shockable_rhythm(event, "ASYSTOLE")
+            event = self.add_event_with_time("RHYTHM", "Asystole", manual_time)
+            return self._format_non_shockable_rhythm(event, "ASYSTOLE") + time_note
         
         if action == "no_pulse":
-            event = self.session.add_event("PULSE_CHECK", "No pulse")
-            return f"❌ [{event.format_run_time()}] **No pulse** - Continue CPR\n\n{self._get_next_prompt()}"
+            event = self.add_event_with_time("PULSE_CHECK", "No pulse", manual_time)
+            return f"❌ [{event.format_run_time()}] **No pulse** - Continue CPR{time_note}\n\n{self._get_next_prompt()}"
         
         # === ROSC ===
         if action == "rosc" or action == "pulse_present":
             self.session.current_rhythm = Rhythm.ROSC
             self.session.outcome = "ROSC"
-            event = self.session.add_event("ROSC", "Return of spontaneous circulation")
-            return self._format_rosc(event)
+            event = self.add_event_with_time("ROSC", "Return of spontaneous circulation", manual_time)
+            return self._format_rosc(event) + time_note
         
         # === Defibrillation ===
         if action == "shock_advised":
-            event = self.session.add_event("DEFIB", "Shock advised")
-            return f"⚡ [{event.format_run_time()}] **Shock advised** - Charging...\n🔊 Say 'Clear' then 'Shock delivered'"
+            event = self.add_event_with_time("DEFIB", "Shock advised", manual_time)
+            return f"⚡ [{event.format_run_time()}] **Shock advised** - Charging...{time_note}\n🔊 Say 'Clear' then 'Shock delivered'"
         
         if action == "clear":
-            event = self.session.add_event("DEFIB", "Clear called")
-            return f"⚠️ [{event.format_run_time()}] **CLEAR!** - Deliver shock"
+            event = self.add_event_with_time("DEFIB", "Clear called", manual_time)
+            return f"⚠️ [{event.format_run_time()}] **CLEAR!** - Deliver shock{time_note}"
         
         if action == "shock_delivered":
             joules = self._extract_joules(original_text) or 200
-            self.session.shocks.append((datetime.now(), joules))
-            event = self.session.add_event("SHOCK", f"{joules}J delivered")
-            return self._format_shock_delivered(event, joules)
+            event_time = manual_time or datetime.now()
+            self.session.shocks.append((event_time, joules))
+            event = self.add_event_with_time("SHOCK", f"{joules}J delivered", manual_time)
+            return self._format_shock_delivered(event, joules) + time_note
         
         if action == "no_shock_advised":
-            event = self.session.add_event("DEFIB", "No shock advised")
-            return f"🚫 [{event.format_run_time()}] **No shock advised** - Non-shockable rhythm\n\n➡️ Continue CPR, give Epi ASAP"
+            event = self.add_event_with_time("DEFIB", "No shock advised", manual_time)
+            return f"🚫 [{event.format_run_time()}] **No shock advised** - Non-shockable rhythm{time_note}\n\n➡️ Continue CPR, give Epi ASAP"
         
         # === Medications ===
         if action == "epi_given":
-            self.session.epi_doses.append(datetime.now())
+            event_time = manual_time or datetime.now()
+            self.session.epi_doses.append(event_time)
             dose_num = len(self.session.epi_doses)
-            event = self.session.add_event("MED", f"Epinephrine 1mg IV (dose #{dose_num})")
-            return self._format_epi_given(event, dose_num)
+            event = self.add_event_with_time("MED", f"Epinephrine 1mg IV (dose #{dose_num})", manual_time)
+            return self._format_epi_given(event, dose_num) + time_note
         
         if action == "amio_given" or action == "amio_300":
             mg = 300 if not self.session.amiodarone_doses else 150
-            self.session.amiodarone_doses.append((datetime.now(), mg))
-            event = self.session.add_event("MED", f"Amiodarone {mg}mg IV")
-            return f"💊 [{event.format_run_time()}] **Amiodarone {mg}mg** given\n\n{'➡️ Second dose: 150mg if needed' if mg == 300 else ''}"
+            event_time = manual_time or datetime.now()
+            self.session.amiodarone_doses.append((event_time, mg))
+            event = self.add_event_with_time("MED", f"Amiodarone {mg}mg IV", manual_time)
+            return f"💊 [{event.format_run_time()}] **Amiodarone {mg}mg** given{time_note}\n\n{'➡️ Second dose: 150mg if needed' if mg == 300 else ''}"
         
         if action == "amio_150":
-            self.session.amiodarone_doses.append((datetime.now(), 150))
-            event = self.session.add_event("MED", "Amiodarone 150mg IV")
-            return f"💊 [{event.format_run_time()}] **Amiodarone 150mg** given"
+            event_time = manual_time or datetime.now()
+            self.session.amiodarone_doses.append((event_time, 150))
+            event = self.add_event_with_time("MED", "Amiodarone 150mg IV", manual_time)
+            return f"💊 [{event.format_run_time()}] **Amiodarone 150mg** given{time_note}"
         
         if action == "bicarb_given":
-            self.session.other_meds.append((datetime.now(), "Sodium Bicarbonate", "50mEq"))
-            event = self.session.add_event("MED", "Sodium Bicarbonate 50mEq IV")
-            return f"💊 [{event.format_run_time()}] **Bicarb 50mEq** given"
+            event_time = manual_time or datetime.now()
+            self.session.other_meds.append((event_time, "Sodium Bicarbonate", "50mEq"))
+            event = self.add_event_with_time("MED", "Sodium Bicarbonate 50mEq IV", manual_time)
+            return f"💊 [{event.format_run_time()}] **Bicarb 50mEq** given{time_note}"
         
         if action == "calcium_given":
-            self.session.other_meds.append((datetime.now(), "Calcium Chloride", "1g"))
-            event = self.session.add_event("MED", "Calcium Chloride 1g IV")
-            return f"💊 [{event.format_run_time()}] **Calcium 1g** given"
+            event_time = manual_time or datetime.now()
+            self.session.other_meds.append((event_time, "Calcium Chloride", "1g"))
+            event = self.add_event_with_time("MED", "Calcium Chloride 1g IV", manual_time)
+            return f"💊 [{event.format_run_time()}] **Calcium 1g** given{time_note}"
         
         if action == "mag_given":
-            self.session.other_meds.append((datetime.now(), "Magnesium Sulfate", "2g"))
-            event = self.session.add_event("MED", "Magnesium Sulfate 2g IV")
-            return f"💊 [{event.format_run_time()}] **Mag 2g** given (Torsades protocol)"
+            event_time = manual_time or datetime.now()
+            self.session.other_meds.append((event_time, "Magnesium Sulfate", "2g"))
+            event = self.add_event_with_time("MED", "Magnesium Sulfate 2g IV", manual_time)
+            return f"💊 [{event.format_run_time()}] **Mag 2g** given (Torsades protocol){time_note}"
         
         # === Airway ===
         if action == "intubated":
             self.session.airway_type = "ETT"
-            self.session.airway_time = datetime.now()
-            event = self.session.add_event("AIRWAY", "ET tube placed")
-            return f"🫁 [{event.format_run_time()}] **Intubated** - Confirm with waveform capnography\n\n➡️ Continuous compressions, 1 breath q6 sec"
+            self.session.airway_time = manual_time or datetime.now()
+            event = self.add_event_with_time("AIRWAY", "ET tube placed", manual_time)
+            return f"🫁 [{event.format_run_time()}] **Intubated** - Confirm with waveform capnography{time_note}\n\n➡️ Continuous compressions, 1 breath q6 sec"
         
         if action == "lma_placed":
             self.session.airway_type = "LMA"
-            self.session.airway_time = datetime.now()
-            event = self.session.add_event("AIRWAY", "Supraglottic airway placed")
-            return f"🫁 [{event.format_run_time()}] **LMA placed** - Confirm placement\n\n➡️ Continuous compressions, 1 breath q6 sec"
+            self.session.airway_time = manual_time or datetime.now()
+            event = self.add_event_with_time("AIRWAY", "Supraglottic airway placed", manual_time)
+            return f"🫁 [{event.format_run_time()}] **LMA placed** - Confirm placement{time_note}\n\n➡️ Continuous compressions, 1 breath q6 sec"
         
         # === Access ===
         if action == "iv_access":
             self.session.iv_access = True
-            self.session.access_time = datetime.now()
-            event = self.session.add_event("ACCESS", "IV access established")
-            return f"💉 [{event.format_run_time()}] **IV access** established\n\n{'➡️ Give Epinephrine 1mg now!' if self.session.is_epi_due() else ''}"
+            self.session.access_time = manual_time or datetime.now()
+            event = self.add_event_with_time("ACCESS", "IV access established", manual_time)
+            return f"💉 [{event.format_run_time()}] **IV access** established{time_note}\n\n{'➡️ Give Epinephrine 1mg now!' if self.session.is_epi_due() else ''}"
         
         if action == "io_access":
             self.session.io_access = True
-            self.session.access_time = datetime.now()
-            event = self.session.add_event("ACCESS", "IO access established")
-            return f"🦴 [{event.format_run_time()}] **IO access** established\n\n{'➡️ Give Epinephrine 1mg now!' if self.session.is_epi_due() else ''}"
+            self.session.access_time = manual_time or datetime.now()
+            event = self.add_event_with_time("ACCESS", "IO access established", manual_time)
+            return f"🦴 [{event.format_run_time()}] **IO access** established{time_note}\n\n{'➡️ Give Epinephrine 1mg now!' if self.session.is_epi_due() else ''}"
         
         # === Code End ===
         if action == "time_of_death":
-            self.session.end_time = datetime.now()
+            self.session.end_time = manual_time or datetime.now()
             self.session.outcome = "Expired"
-            event = self.session.add_event("CODE_END", "Time of death called")
+            event = self.add_event_with_time("CODE_END", "Time of death called", manual_time)
             return self._format_code_end(event, "Expired")
         
         if action == "code_end":
-            self.session.end_time = datetime.now()
+            self.session.end_time = manual_time or datetime.now()
             if not self.session.outcome:
                 self.session.outcome = "Ended"
-            event = self.session.add_event("CODE_END", "Code concluded")
+            event = self.add_event_with_time("CODE_END", "Code concluded", manual_time)
             return self._format_code_end(event, self.session.outcome)
         
         return f"📝 Noted: {original_text}"
@@ -610,6 +623,57 @@ class CodeBlueAgent:
         if match:
             return int(match.group(1))
         return None
+    
+    def _extract_time(self, text: str) -> Optional[datetime]:
+        """
+        Extract manual timestamp from text.
+        Supports: "23:04", "2304", "11:04 PM", "23:04:30"
+        """
+        import re
+        
+        # Pattern: HH:MM:SS or HH:MM
+        match = re.search(r'(\d{1,2}):(\d{2})(?::(\d{2}))?', text)
+        if match:
+            hour = int(match.group(1))
+            minute = int(match.group(2))
+            second = int(match.group(3)) if match.group(3) else 0
+            try:
+                now = datetime.now()
+                return now.replace(hour=hour, minute=minute, second=second, microsecond=0)
+            except ValueError:
+                pass
+        
+        # Pattern: HHMM (military time like "2304")
+        match = re.search(r'\b(\d{2})(\d{2})\b', text)
+        if match:
+            hour = int(match.group(1))
+            minute = int(match.group(2))
+            if 0 <= hour <= 23 and 0 <= minute <= 59:
+                try:
+                    now = datetime.now()
+                    return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                except ValueError:
+                    pass
+        
+        return None
+    
+    def add_event_with_time(self, event_type: str, details: str, manual_time: Optional[datetime] = None) -> CodeEvent:
+        """Add event with optional manual timestamp."""
+        timestamp = manual_time or datetime.now()
+        
+        # Calculate run time from code start
+        run_time = int((timestamp - self.session.start_time).total_seconds())
+        if run_time < 0:
+            run_time = 0  # Don't go negative
+        
+        event = CodeEvent(
+            timestamp=timestamp,
+            event_type=event_type,
+            details=details,
+            run_time_seconds=run_time
+        )
+        self.session.events.append(event)
+        return event
     
     def generate_code_record(self) -> str:
         """Generate formatted Code Blue documentation."""
