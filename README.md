@@ -1,3 +1,15 @@
+---
+title: NurseGemma - Agentic Medical AI
+emoji: 🩺
+colorFrom: green
+colorTo: blue
+sdk: gradio
+sdk_version: "5.0.0"
+python_version: "3.10"
+app_file: app.py
+pinned: false
+---
+
 # 🩺 NurseGemma
 
 **Agentic Medical AI for Nursing Practice**
